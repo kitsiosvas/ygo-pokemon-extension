@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'none';
+           style-src 'unsafe-inline';
+           script-src 'unsafe-inline';
+           img-src {{CSP_SOURCE}} {{IMG_HOSTS}} data:;">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: radial-gradient(ellipse at 50% 30%, #241b3a 0%, #0d0a1a 60%, #050409 100%);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: #d8d2f0;
+    user-select: none;
+  }
+
+  /* animated hex/grid floor */
+  .hex-bg {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(115deg, rgba(120,90,220,.06) 1px, transparent 1px),
+      linear-gradient(65deg, rgba(120,90,220,.06) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: radial-gradient(ellipse at 50% 55%, #000 20%, transparent 75%);
+    animation: drift 24s linear infinite;
+  }
+  @keyframes drift { to { background-position: 460px 230px; } }
+
+  #field {
+    position: relative;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%;
+    transform: translate(0, 0);
+  }
+
+  /* draw ring on the floor */
+  #ring {
+    position: absolute; left: 50%; top: 55%;
+    width: clamp(200px, 46vw, 340px); height: clamp(200px, 46vw, 340px);
+    border-radius: 50%;
+    border: 5px solid rgba(130, 200, 255, .95);
+    box-shadow: 0 0 55px rgba(120,190,255,.85), inset 0 0 55px rgba(120,190,255,.5);
+    transform: translate(-50%, -50%) scale(0); opacity: 0;
+    pointer-events: none;
+  }
+  #ring::after {
+    content: ""; position: absolute; inset: 14px;
+    border-radius: 50%;
+    border: 2px dashed rgba(200,170,255,.7);
+  }
+
+  /* glow behind the card */
+  #glow {
+    position: absolute; left: 50%; top: 50%;
+    width: 60vmin; height: 60vmin;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, rgba(150,110,255,.35), transparent 65%);
+    opacity: 0; pointer-events: none;
+    filter: blur(6px);
+  }
+
+  #cardWrap {
+    position: relative;
+    width: clamp(200px, 44vw, 300px);
+    aspect-ratio: 59 / 86;
+    perspective: 1200px;
+    opacity: 0;
+    z-index: 5;
+  }
+  #card {
+    position: absolute; inset: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    transform-style: preserve-3d;
+    box-shadow: 0 18px 50px rgba(0,0,0,.7), 0 0 30px rgba(150,110,255,.4);
+    background: #1b1530;
+  }
+  #card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  /* text-card fallback for the rare case a card has no art at all */
+  .fallback {
+    position: absolute; inset: 0;
+    border: 10px solid var(--frame, #b8620a);
+    border-radius: 12px;
+    background: linear-gradient(160deg, #3a2f1a, #24202e);
+    display: flex; flex-direction: column; padding: 8% 8% 6%;
+    text-align: center;
+  }
+  .fallback .fname { font: 600 clamp(11px,3.2vw,17px)/1.1 Georgia, serif; color: #f4ecd0; }
+  .fallback .fstars { font-size: clamp(9px,2.4vw,13px); margin: 4% 0; letter-spacing: 1px; }
+  .fallback .fart {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    font-size: clamp(48px, 18vw, 120px);
+    background: radial-gradient(circle, #4a3d6b, #201a33);
+    border: 2px solid #8a7bbf; border-radius: 4px; margin-bottom: 4%;
+  }
+  .fallback .ftype { font: italic 600 clamp(8px,2.2vw,12px) Georgia, serif; color: #e8dcc0; }
+  .fallback .fstat {
+    display: flex; justify-content: space-between;
+    font: 700 clamp(9px,2.6vw,14px) Georgia, serif; color: #f4ecd0; margin-top: 3%;
+  }
+
+  /* holographic shimmer sweep */
+  .holo {
+    position: absolute; inset: 0; z-index: 3; pointer-events: none;
+    mix-blend-mode: screen; opacity: .55;
+    background: linear-gradient(115deg,
+      transparent 30%,
+      rgba(255,120,220,.35) 45%,
+      rgba(120,220,255,.45) 50%,
+      rgba(180,255,150,.35) 55%,
+      transparent 70%);
+    background-size: 250% 250%;
+    animation: shimmer 3.2s linear infinite;
+  }
+  @keyframes shimmer { to { background-position: -250% 0; } }
+
+  #flash {
+    position: absolute; inset: 0; background: #fff; opacity: 0;
+    pointer-events: none; z-index: 20;
+  }
+
+  #banner {
+    position: absolute; left: 50%; top: 14%;
+    transform: translateX(-50%);
+    font: 800 clamp(28px, 8vw, 64px)/1 "Trebuchet MS", Impact, sans-serif;
+    letter-spacing: 4px;
+    color: #ffe680;
+    text-shadow: 0 0 18px rgba(255,180,40,.9), 0 3px 0 #7a4a00, 0 0 40px rgba(255,120,0,.7);
+    opacity: 0; pointer-events: none; z-index: 30;
+    white-space: nowrap;
+  }
+
+  #particles { position: absolute; inset: 0; pointer-events: none; z-index: 25; }
+  .particle {
+    position: absolute; left: 50%; top: 48%;
+    font-size: clamp(14px, 3vw, 26px);
+    will-change: transform, opacity;
+  }
+
+  /* stop burning GPU when the panel is hidden/obscured */
+  body.vw-hidden .hex-bg,
+  body.vw-hidden .holo { animation-play-state: paused; }
+
+  #hint {
+    position: absolute; bottom: 6%; left: 50%; transform: translateX(-50%);
+    font-size: clamp(11px, 2.4vw, 15px); color: #8a80b8;
+    text-align: center; opacity: .85;
+  }
+  #meta {
+    position: absolute; bottom: 11%; left: 50%; transform: translateX(-50%);
+    font: 600 clamp(11px,2.6vw,16px) Georgia, serif; color: #e6dcff;
+    text-align: center; opacity: 0; max-width: 80vw; z-index: 6;
+    text-shadow: 0 2px 8px #000;
+  }
+
+  /* NEW! / xN badge that pops on the card corner */
+  #badge {
+    position: absolute; left: 50%; top: 18%;
+    transform: translate(-50%, -50%) scale(0);
+    font: 800 clamp(14px,3.4vw,22px) "Trebuchet MS", sans-serif;
+    padding: 4px 12px; border-radius: 999px; z-index: 28;
+    pointer-events: none; white-space: nowrap;
+  }
+  #badge.new  { background: linear-gradient(135deg,#ffcf3f,#ff7a00); color:#3a1c00;
+                box-shadow:0 0 22px rgba(255,170,40,.9); }
+  #badge.dupe { background: rgba(30,26,54,.9); color:#c9bfff;
+                border:1px solid #6b5fb0; }
+
+  /* collection counter, top-right (under the game toggle) */
+  #stats {
+    position: absolute; top: 40px; right: 14px; z-index: 8;
+    font: 600 clamp(10px,2vw,13px) "Segoe UI", sans-serif;
+    color: #b9aef0; opacity: .9; text-align: right;
+    text-shadow: 0 1px 4px #000;
+  }
+
+  /* game switcher, top-right — one click swaps the active game */
+  #gameToggle {
+    position: absolute; top: 8px; right: 12px; z-index: 9;
+    display: flex; gap: 3px; padding: 2px;
+    background: rgba(20,16,38,.7); border: 1px solid #4a3f82; border-radius: 9px;
+  }
+  #gameToggle .seg {
+    font: 700 clamp(9px,1.9vw,12px) "Segoe UI", sans-serif;
+    color: #b6abe6; background: transparent; border: none; border-radius: 7px;
+    padding: 4px 9px; cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  #gameToggle .seg:hover { color: #e6dcff; background: rgba(90,72,150,.4); }
+  #gameToggle .seg.on {
+    color: #1a1030; background: linear-gradient(135deg,#ffcf3f,#ff8a00);
+    box-shadow: 0 0 12px rgba(255,170,40,.5);
+  }
+
+  /* Binder button, top-left */
+  #binderBtn {
+    position: absolute; top: 8px; left: 12px; z-index: 9;
+    font: 600 clamp(10px,2vw,13px) "Segoe UI", sans-serif;
+    color: #d8d2f0; background: rgba(40,32,70,.75);
+    border: 1px solid #5b4fa0; border-radius: 8px;
+    padding: 5px 10px; cursor: pointer; user-select: none;
+  }
+  #binderBtn:hover, #packBtn:hover { background: rgba(70,56,120,.9); }
+  #packBtn {
+    position: absolute; top: 8px; left: 92px; z-index: 9;
+    font: 600 clamp(10px,2vw,13px) "Segoe UI", sans-serif;
+    color: #ffe6a8; background: rgba(70,50,20,.75);
+    border: 1px solid #a8791f; border-radius: 8px;
+    padding: 5px 10px; cursor: pointer; user-select: none;
+  }
+  /* Competitive pack button, right of Pack — only earned by merging PRs */
+  #compBtn {
+    position: absolute; top: 8px; left: 172px; z-index: 9;
+    font: 600 clamp(10px,2vw,13px) "Segoe UI", sans-serif;
+    color: #ffe680; background: rgba(80,60,10,.75);
+    border: 1px solid #c99a2f; border-radius: 8px;
+    padding: 5px 10px; cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  #compBtn:hover:not(.disabled) { background: rgba(120,90,20,.9); }
+  #compBtn.disabled { opacity: .45; cursor: default; }
+
+  /* Gold treatment for a Competitive pack's reveal — same animation, just a
+     trophy-tinted card frame so it reads as the "real" grind. */
+  body.competitive-pack #card {
+    box-shadow: 0 18px 55px rgba(0,0,0,.7), 0 0 45px rgba(255,205,60,.9), 0 0 0 3px #ffcf3f inset;
+  }
+  body.competitive-pack #packInfo { color: #ffe07a; text-shadow: 0 0 10px rgba(255,190,40,.8); }
+
+  /* pack progress: "Card 2 / 5" top-center */
+  #packInfo {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    z-index: 9; font: 700 clamp(11px,2.3vw,15px) "Trebuchet MS", sans-serif;
+    color: #ffe07a; letter-spacing: 1px; opacity: 0;
+    text-shadow: 0 1px 6px #000;
+  }
+
+  /* ── booster pack — real image (falls back to inline SVG) ─── */
+  /* --pack-ar matches the active game's pack image (set from THEME.packAspectRatio
+     in JS below) so the whole pack shows with no cropping. #pack and .pack-art
+     share it so the two rip-halves align. This default is the fallback before
+     that JS runs. */
+  #field { --pack-ar: 657 / 1181; }
+  #pack {
+    position: absolute; left: 50%; top: 50%;
+    /* fit inside BOTH the panel width and height so the whole (tall) pack shows:
+       the 3rd term caps width so height (= width / --pack-ar) stays within 88vh */
+    width: min(320px, 82vw, calc(88vh * (var(--pack-ar))));
+    aspect-ratio: var(--pack-ar);
+    transform: translate(-50%, -50%);
+    z-index: 12; display: none;
+    filter: drop-shadow(0 20px 34px rgba(0,0,0,.65));
+  }
+  /* Both halves cover the FULL pack and hold an identical full-size image;
+     clip-path reveals only each half's slice. Because the two images are drawn
+     identically and only clipped differently, they line up perfectly into one
+     whole pack — nothing per-half to size wrong. The rip animation then flings
+     each clipped slice apart. */
+  .pack-half { position: absolute; inset: 0; overflow: hidden; }
+  .pack-art  { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: cover; }
+  .pack-half::after {
+    content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+    mix-blend-mode: screen; opacity: .5;
+    background: linear-gradient(115deg, transparent 38%, rgba(255,255,255,.55) 50%, transparent 62%);
+    background-size: 250% 250%; animation: shimmer 3s linear infinite;
+  }
+  .pack-top    { clip-path: inset(0 0 50% 0 round 14px 14px 0 0); }   /* top 50% slice */
+  .pack-bottom { clip-path: inset(49% 0 0 0 round 0 0 14px 14px); }   /* bottom 51% (1% overlap) */
+
+  /* Per-tier card treatment (#card.<id> + its .holo sweep) is generated at
+     load from the injected TIERS registry — see injectTierStyles() below. */
+</style>
+</head>
+<body>
+  <div id="field">
+    <div class="hex-bg"></div>
+    <div id="glow"></div>
+    <div id="ring"></div>
+    <div id="cardWrap"><div id="card"></div></div>
+    <div id="pack"></div>
+    <div id="meta"></div>
+    <div id="badge"></div>
+    <div id="banner"></div>
+    <div id="flash"></div>
+    <div id="particles"></div>
+    <div id="gameToggle"></div>
+    <div id="stats"></div>
+    <div id="binderBtn">�� Binder</div>
+    <div id="packBtn">�� Pack</div>
+    <div id="compBtn"></div>
+    <div id="packInfo"></div>
+    <div id="hint"></div>
+  </div>
+
+<script>
+  // Game theme injected by the extension (titles, words, stat rows, icons).
+  const THEME = {{THEME}};
+  const ATTR_ICON = THEME.attrIcons || {};
+  // available games + which is active, for the in-panel switcher
+  const GAMES = {{GAMES}};
+  const ACTIVE_GAME = "{{ACTIVE_GAME}}";
+  // rarity tiers injected by the extension (reveal look + banner per tier)
+  const TIERS = {{TIERS}};
+  const TIER_BY_ID = Object.fromEntries(TIERS.map(t => [t.id, t]));
+  const TIER_IDS = TIERS.map(t => t.id);
+  // special (non-base) tiers — the one "specialness" test, mirroring the host's
+  // isSpecialTier(). Everything tier-conditional keys off `base`, never a literal id.
+  const SPECIAL_TIERS = TIERS.filter(t => !t.base);
+  const isSpecialId = id => { const t = TIER_BY_ID[id]; return !!t && !t.base; };
+
+  // toggle a card's tier class: drop all tier classes, add the active one
+  function applyTier(el, tier) {
+    el.classList.remove(...TIER_IDS);
+    if (isSpecialId(tier)) el.classList.add(tier);
+  }
+
+  // banner text for a tier: fill its template with the game's noun, or (base
+  // tier, no template) fall back to the game's plain reveal word.
+  function tierWord(t) {
+    return t.wordTemplate
+      ? t.wordTemplate.replace('{noun}', THEME.revealNoun || '')
+      : THEME.drawWord;
+  }
+
+  // Generate the per-tier reveal CSS from the injected registry — the tiers'
+  // look lives in one place (extension.js), not hand-copied here per rarity.
+  (function injectTierStyles() {
+    const css = SPECIAL_TIERS.filter(t => t.style).map(t => {
+      const s = t.style;
+      return '#card.' + t.id + ' { box-shadow: 0 18px 55px rgba(0,0,0,.7), 0 0 50px ' + s.cardGlow + '; }\n' +
+        '#card.' + t.id + ' .holo { opacity: ' + s.holoOpacity + '; mix-blend-mode: ' + s.holoBlend + '; ' +
+        'background: ' + s.holo + '; background-size: 250% 250%; animation-duration: ' + s.holoSpeed + '; }';
+    }).join('\n');
+    const el = document.createElement('style');
+    el.textContent = css;
+    document.head.appendChild(el);
+  })();
+
+  const field    = document.getElementById('field');
+  field.style.setProperty('--pack-ar', THEME.packAspectRatio || '657 / 1181');
+  document.getElementById('hint').innerHTML =
+    'Click here to <b>' + THEME.actionLabel + '</b> — or use a “Cards:” command.';
+  const cardWrap = document.getElementById('cardWrap');
+  const card     = document.getElementById('card');
+  const ring     = document.getElementById('ring');
+  const glow     = document.getElementById('glow');
+  const flash    = document.getElementById('flash');
+  const banner   = document.getElementById('banner');
+  const meta     = document.getElementById('meta');
+  const hint     = document.getElementById('hint');
+  const particles= document.getElementById('particles');
+  const badge    = document.getElementById('badge');
+  const stats    = document.getElementById('stats');
+  const binderBtn= document.getElementById('binderBtn');
+  const packBtn  = document.getElementById('packBtn');
+  const compBtn  = document.getElementById('compBtn');
+  const packInfo = document.getElementById('packInfo');
+  const packEl   = document.getElementById('pack');
+  const gameToggle = document.getElementById('gameToggle');
+
+  // A full booster pack drawn as SVG (crisp at any size, no external assets).
+  // Rendered once per half; each half's overflow+clip reveals its own slice.
+  const PACK_ART = `
+    <svg class="pack-art" viewBox="0 0 200 300" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="pfoil" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#3b1f74"/><stop offset=".4" stop-color="#5a2fb2"/>
+          <stop offset=".62" stop-color="#8a3bb0"/><stop offset=".8" stop-color="#4023a0"/>
+          <stop offset="1" stop-color="#241a5e"/>
+        </linearGradient>
+        <linearGradient id="pgold" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#fff6cf"/><stop offset=".45" stop-color="#ffcf3f"/>
+          <stop offset="1" stop-color="#a86a12"/>
+        </linearGradient>
+        <radialGradient id="pmedal" cx=".5" cy=".42" r=".62">
+          <stop offset="0" stop-color="#53407f"/><stop offset=".7" stop-color="#1e1442"/>
+          <stop offset="1" stop-color="#0e0a24"/>
+        </radialGradient>
+        <radialGradient id="pglow" cx=".5" cy=".5" r=".5">
+          <stop offset="0" stop-color="#ffe89a" stop-opacity=".95"/>
+          <stop offset="1" stop-color="#ffe89a" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <rect x="5" y="5" width="190" height="290" rx="15" fill="url(#pfoil)"/>
+      <g opacity=".16" fill="#ffffff">
+        <polygon points="20,0 60,0 20,300 -20,300"/>
+        <polygon points="110,0 130,0 90,300 70,300"/>
+        <polygon points="175,0 205,0 175,300 145,300"/>
+      </g>
+      <g opacity=".14">
+        <polygon points="70,0 82,0 42,300 30,300" fill="#5effd0"/>
+        <polygon points="150,0 165,0 125,300 110,300" fill="#ff7ad0"/>
+      </g>
+      <rect x="5" y="5" width="190" height="290" rx="15" fill="none" stroke="url(#pgold)" stroke-width="4"/>
+      <rect x="11" y="11" width="178" height="278" rx="11" fill="none" stroke="#ffe89a" stroke-opacity=".35"/>
+      <text x="100" y="36" text-anchor="middle" font-family="'Trebuchet MS',Impact,sans-serif" font-weight="800" font-size="30" letter-spacing="3" fill="url(#pgold)">${THEME.packTitle}</text>
+      <text x="100" y="64" text-anchor="middle" font-family="'Trebuchet MS',Impact,sans-serif" font-weight="800" font-size="30" letter-spacing="3" fill="url(#pgold)">${THEME.packSubtitle}</text>
+      <text x="100" y="82" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-weight="700" font-size="8" letter-spacing="4" fill="#ffe6b0" opacity=".8">TRADING CARD GAME</text>
+      <text x="100" y="113" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-weight="700" font-size="6" letter-spacing="3" fill="#ffe6b0" opacity=".55">&#9668; TEAR HERE &#9658;</text>
+      <line x1="16" y1="120" x2="184" y2="120" stroke="#ffe6b0" stroke-opacity=".5" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <g transform="translate(100 190)">
+        <circle r="60" fill="url(#pglow)"/>
+        <circle r="44" fill="url(#pmedal)" stroke="url(#pgold)" stroke-width="3"/>
+        <circle r="44" fill="none" stroke="#ffe89a" stroke-opacity=".3" stroke-width="6"/>
+        <path d="M-30,0 Q0,-22 30,0 Q0,20 -30,0 Z" fill="#f4ecd0"/>
+        <circle cx="2" cy="0" r="10" fill="#2b1a52"/>
+        <circle cx="2" cy="0" r="10" fill="none" stroke="#7a5ec0" stroke-width="2"/>
+        <circle cx="5" cy="-3" r="3" fill="#cbb9ff"/>
+        <path d="M-32,-4 Q0,-28 32,-4" fill="none" stroke="url(#pgold)" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M30,2 q12,1 20,-4" fill="none" stroke="url(#pgold)" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M-8,14 q-6,14 -16,18" fill="none" stroke="url(#pgold)" stroke-width="3.5" stroke-linecap="round"/>
+      </g>
+      <g fill="#fff6cf">
+        <circle cx="40" cy="150" r="2"/><circle cx="165" cy="235" r="2.5"/>
+        <circle cx="150" cy="140" r="1.6"/><circle cx="52" cy="240" r="1.8"/>
+      </g>
+      <text x="100" y="266" text-anchor="middle" font-family="'Trebuchet MS',sans-serif" font-weight="800" font-size="11" letter-spacing="2" fill="url(#pgold)">5 CARDS</text>
+      <text x="100" y="280" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-weight="700" font-size="7" letter-spacing="3" fill="#d9ccff" opacity=".7">1ST EDITION &#183; BOOSTER</text>
+    </svg>`;
+
+  // The extension replaces {{PACK_IMG}} with a real pack image URL if one is
+  // bundled for the active game (media/pack-<game>.png/jpg/…), else ''; SVG fallback then.
+  const PACK_IMG = "{{PACK_IMG}}";
+  const PACK_SLICE = PACK_IMG
+    ? '<img class="pack-art" src="' + PACK_IMG + '" alt="">'
+    : PACK_ART;
+
+  const PACK_MARKUP =
+    '<div class="pack-half pack-bottom">' + PACK_SLICE + '</div>' +
+    '<div class="pack-half pack-top">'    + PACK_SLICE + '</div>';
+
+  packEl.innerHTML = PACK_MARKUP;
+
+  let idleAnim = null;
+  let lastTier = 'normal';   // tier of the card currently on the field
+  let animating = false;
+  let packState = null;   // { cards, index, waiting, competitive } while opening a pack
+  let awaitingRip = false; // pack wrapper is showing, waiting for the rip
+  let packDone = false;    // a pack just finished; next tap returns to start
+  let credits = 0;         // Competitive pack credits available, from the host
+
+  function updateCompBtn() {
+    const disabled = credits <= 0;
+    compBtn.textContent = '�� Competitive' + (credits > 0 ? ' (' + credits + ')' : '');
+    compBtn.classList.toggle('disabled', disabled);
+    compBtn.title = disabled
+      ? 'Merge a PR to earn a Competitive pack'
+      : credits + ' pack' + (credits > 1 ? 's' : '') + ' available';
+  }
+  updateCompBtn();
+
+  function render(c) {
+    const art = c.imageData || c.image;
+    if (art) {
+      card.innerHTML =
+        '<img src="' + art + '" alt="">' +
+        '<div class="holo"></div>';
+    } else {
+      const stars = c.level ? '⭐'.repeat(Math.min(c.level, 12)) : '';
+      const icon = ATTR_ICON[c[THEME.attrKey]] || '✦';
+      const fstat = THEME.stats
+        .map(s => '<span>' + s.label + '/' + (c[s.key] ?? '?') + '</span>')
+        .join('');
+      card.innerHTML =
+        '<div class="fallback">' +
+          '<div class="fname">' + esc(c.name) + '  ' + icon + '</div>' +
+          '<div class="fstars">' + stars + '</div>' +
+          '<div class="fart">' + (c.emoji || '��') + '</div>' +
+          '<div class="ftype">[ ' + esc(c.type || '') + ' ]</div>' +
+          '<div class="fstat">' + fstat + '</div>' +
+        '</div>' +
+        '<div class="holo"></div>';
+    }
+
+    const bits = THEME.stats
+      .filter(s => c[s.key] != null)
+      .map(s => s.label + ' ' + c[s.key]);
+    meta.textContent = c.name + (bits.length ? '  ·  ' + bits.join(' / ') : '');
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, m =>
+      ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[m]));
+  }
+
+  // resolve once the image is fully downloaded AND decoded (single paint)
+  function preload(url) {
+    if (!url) return Promise.resolve();
+    return new Promise(resolve => {
+      const img = new Image();
+      const done = () => resolve();
+      img.onload = done;
+      img.onerror = done;
+      img.src = url;
+      if (img.decode) img.decode().then(done).catch(done);
+    });
+  }
+
+  async function draw(c, packLabel) {
+    animating = true;
+    await preload(c.imageData || c.image);
+    lastTier = c.tier || 'normal';
+    render(c);
+    applyTier(card, lastTier);
+    // tag with ACTIVE_GAME (baked in at render time) rather than trusting the
+    // host's current game — this page is always for the game it was rendered
+    // for, even if the host has since switched while this message is in flight
+    vscode.postMessage({ type: 'shown', card: c, gameId: ACTIVE_GAME });
+    showBadge(c);
+    updateStats(c);
+    setPackInfo(packLabel);
+    hint.style.display = 'none';
+    if (idleAnim) { idleAnim.cancel(); idleAnim = null; }
+
+    [cardWrap, ring, glow, banner, meta].forEach(el =>
+      el.getAnimations().forEach(a => a.cancel()));
+
+    glow.animate(
+      [{ opacity: 0 }, { opacity: 1, offset: .4 }, { opacity: .55 }],
+      { duration: 1000, fill: 'forwards' });
+
+    ring.animate([
+      { transform: 'translate(-50%,-50%) scale(0) rotate(0deg)', opacity: .95 },
+      { transform: 'translate(-50%,-50%) scale(1.35) rotate(200deg)', opacity: .9, offset: .6 },
+      { transform: 'translate(-50%,-50%) scale(1.9) rotate(360deg)', opacity: 0 }
+    ], { duration: 1050, easing: 'ease-out' });
+
+    const rise = cardWrap.animate([
+      { transform: 'translateY(150%) scale(.25) rotateY(720deg)', opacity: 0, filter: 'brightness(3)' },
+      { transform: 'translateY(-8%) scale(1.06) rotateY(0deg)',   opacity: 1, filter: 'brightness(1.3)', offset: .8 },
+      { transform: 'translateY(0) scale(1) rotateY(0deg)',        opacity: 1, filter: 'brightness(1)' }
+    ], { duration: 950, easing: 'cubic-bezier(.2,.9,.25,1.25)', fill: 'forwards' });
+
+    // Clear `animating` and advance exactly once. A Web Animations onfinish
+    // callback isn't guaranteed to fire in a webview (throttled while the
+    // panel is backgrounded, or pre-empted by a later cancel), and EVERY input
+    // — field tap, pack buttons — is gated on `animating`, so a missed onfinish
+    // would wedge the whole panel. The timeout is the safety net.
+    let settled = false;
+    const settle = () => { if (settled) return; settled = true; startIdle(); onCardSettled(); };
+    rise.onfinish = settle;
+    setTimeout(settle, 1400); // > rise duration; a no-op if onfinish already ran
+
+    setTimeout(impact, 660);
+  }
+
+  // Show a card in its resting state — no rise/impact/particles. Used to bring
+  // back the last-pulled card when you switch games (so the field isn't empty).
+  async function restoreCard(c) {
+    if (animating || packState || awaitingRip || packDone) return;
+    await preload(c.imageData || c.image);
+    lastTier = c.tier || 'normal';
+    render(c);
+    applyTier(card, lastTier);
+    updateStats(c);
+    hint.style.display = 'none';
+    cardWrap.style.opacity = 1;
+    meta.style.opacity = 1;
+    if (idleAnim) { idleAnim.cancel(); idleAnim = null; }
+    startIdle();
+  }
+
+  // called once a card has fully risen into place
+  function onCardSettled() {
+    animating = false;
+    if (!packState) return;
+    if (packState.index < packState.cards.length) {
+      packInfo.textContent = 'Card ' + packState.index + ' / ' +
+        packState.cards.length + '   —   tap to reveal next ▶';
+    } else {
+      finishPack();
+    }
+  }
+
+  function setPackInfo(label) {
+    if (label) {
+      packInfo.textContent = label;
+      packInfo.style.opacity = 1;
+    } else {
+      packInfo.style.opacity = 0;
+    }
+  }
+
+  // wrapper arrives first (cards still being fetched)
+  function beginPack(competitive) {
+    // start every pack from a clean slate: cancel any lingering reveal
+    // animations and clear the transient interaction flags, so a stuck state
+    // from a previous pack can never carry over into this one.
+    [cardWrap, ring, glow, banner, meta].forEach(el => el.getAnimations().forEach(a => a.cancel()));
+    if (idleAnim) { idleAnim.cancel(); idleAnim = null; }
+    animating = false;
+    awaitingRip = false;
+    packDone = false;
+    packState = { cards: null, index: 0, waiting: false, competitive: !!competitive };
+    document.body.classList.toggle('competitive-pack', !!competitive);
+    showPackWrapper();
+  }
+
+  // cards finished fetching; start revealing if the player already ripped
+  function onPackCards(cards) {
+    if (!packState) return;         // pack was dismissed before cards arrived
+    packState.cards = cards;
+    if (packState.waiting) {
+      packState.waiting = false;
+      revealNext();
+    }
+  }
+
+  // present the sealed foil pack and wait for the player to rip it
+  function showPackWrapper() {
+    card.innerHTML = '';
+    applyTier(card, 'normal');
+    meta.style.opacity = 0;
+    badge.textContent = ''; badge.className = '';
+    hint.style.display = 'none';
+
+    // rebuild the wrapper fresh so no leftover rip-animation state lingers
+    packEl.getAnimations().forEach(a => a.cancel());
+    packEl.innerHTML = PACK_MARKUP;
+
+    packEl.style.display = 'block';
+    packEl.animate([
+      { transform: 'translate(-50%,-50%) translateY(45%) scale(.4) rotate(-8deg)', opacity: 0 },
+      { transform: 'translate(-50%,-50%) scale(1) rotate(0deg)', opacity: 1 }
+    ], { duration: 520, easing: 'cubic-bezier(.2,.9,.25,1.3)', fill: 'forwards' });
+
+    awaitingRip = true;
+    packInfo.style.opacity = 1;
+    packInfo.textContent = (packState.competitive ? '�� Tap to rip open your Competitive pack!' : '�� Tap to rip open the pack!');
+  }
+
+  // tear the wrapper apart, then start revealing the cards
+  function ripPack() {
+    if (!awaitingRip || animating) return;
+    awaitingRip = false;
+    animating = true;
+    vscode.postMessage({ type: 'packRipped' }); // tell the host it's safe to commit these cards now
+
+    const top = packEl.querySelector('.pack-top');
+    const bot = packEl.querySelector('.pack-bottom');
+
+    flash.animate([{ opacity: .9 }, { opacity: 0 }], { duration: 420, easing: 'ease-out' });
+    shake();
+    burst('normal');
+
+    top.animate([
+      { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
+      { transform: 'translateY(-190%) rotate(-18deg)', opacity: 0 }
+    ], { duration: 620, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards' });
+
+    const b = bot.animate([
+      { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
+      { transform: 'translateY(150%) rotate(12deg)', opacity: 0 }
+    ], { duration: 680, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards', delay: 90 });
+
+    // same onfinish-reliability guard as draw(): clear `animating` and start
+    // the reveal exactly once, with a timeout backstop so a missed onfinish
+    // can't leave the pack sealed forever.
+    let torn = false;
+    const afterTear = () => {
+      if (torn) return; torn = true;
+      packEl.style.display = 'none';
+      animating = false;
+      revealNext();
+    };
+    b.onfinish = afterTear;
+    setTimeout(afterTear, 1100); // > delay + duration
+  }
+
+  function revealNext() {
+    if (!packState || animating) return;
+    if (!packState.cards) {              // ripped before cards arrived
+      packState.waiting = true;
+      packInfo.textContent = 'Opening…';
+      packInfo.style.opacity = 1;
+      return;
+    }
+    if (packState.index >= packState.cards.length) { finishPack(); return; }
+    const c = packState.cards[packState.index];
+    const prefix = packState.competitive ? '�� ' : '';
+    packState.index++;
+    draw(c, prefix + 'Card ' + packState.index + ' / ' + packState.cards.length);
+  }
+
+  function finishPack() {
+    const cards = packState.cards;
+    const competitive = packState.competitive;
+    const newCount = cards.filter(c => c.isNew).length;
+    // one "· N <tag> <label>" chunk per special tier that actually dropped
+    const tierBits = SPECIAL_TIERS
+      .map(t => ({ t, n: cards.filter(c => c.tier === t.id).length }))
+      .filter(x => x.n > 0)
+      .map(x => ' · ' + x.n + ' ' + x.t.tag + ' ' + x.t.label.toLowerCase());
+    packState = null;
+    packDone = true;    // next tap goes back to the start screen
+    packInfo.textContent = (competitive ? '�� ' : '�� ') + newCount + ' new' + tierBits.join('') + '  —  tap to return';
+    packInfo.style.opacity = 1;
+  }
+
+  // a draw or pack fetch failed on the host side (network down, API rate-
+  // limited, etc.) — tear down whatever was mid-flight (a "Drawing…" field
+  // or a sealed wrapper waiting to be ripped) and return to idle instead of
+  // leaving the panel stuck.
+  function handleFetchFailed() {
+    [cardWrap, ring, glow, banner, meta].forEach(el => el.getAnimations().forEach(a => a.cancel()));
+    packEl.getAnimations().forEach(a => a.cancel());
+    animating = false;
+    awaitingRip = false;
+    packDone = false;
+    packState = null;
+    showStartScreen();
+  }
+
+  // reset everything back to the idle "ready to draw" screen
+  function showStartScreen() {
+    packEl.style.display = 'none';
+    card.innerHTML = '';
+    applyTier(card, 'normal');
+    meta.style.opacity = 0;
+    badge.textContent = ''; badge.className = '';
+    packInfo.style.opacity = 0;
+    document.body.classList.remove('competitive-pack');
+    if (idleAnim) { idleAnim.cancel(); idleAnim = null; }
+    hint.style.display = '';
+  }
+
+  function impact() {
+    const t = TIER_BY_ID[lastTier] || TIER_BY_ID.normal;
+    flash.animate([{ opacity: t.flash }, { opacity: 0 }],
+      { duration: t.flashMs, easing: 'ease-out' });
+
+    shake();
+    burst(lastTier);
+
+    banner.textContent = tierWord(t);
+    banner.style.color = t.bannerColor;
+    banner.animate([
+      { transform: 'translateX(-50%) scale(2.4)', opacity: 0 },
+      { transform: 'translateX(-50%) scale(1)',   opacity: 1, offset: .22 },
+      { transform: 'translateX(-50%) scale(1)',   opacity: 1, offset: .7 },
+      { transform: 'translateX(-50%) scale(1.15)', opacity: 0 }
+    ], { duration: 1700, easing: 'ease-out' });
+
+    meta.animate(
+      [{ opacity: 0, transform: 'translateX(-50%) translateY(10px)' },
+       { opacity: 1, transform: 'translateX(-50%) translateY(0)' }],
+      { duration: 700, delay: 300, fill: 'forwards' });
+  }
+
+  function shake() {
+    const frames = [];
+    for (let i = 0; i < 8; i++) {
+      const d = 10 * (1 - i / 8);
+      frames.push({ transform: `translate(${(Math.random()*2-1)*d}px, ${(Math.random()*2-1)*d}px)` });
+    }
+    frames.push({ transform: 'translate(0,0)' });
+    field.animate(frames, { duration: 480, easing: 'ease-out' });
+  }
+
+  function burst(tier) {
+    const t = TIER_BY_ID[tier] || TIER_BY_ID.normal;
+    const chars = t.chars;
+    const count = t.particles;
+    for (let i = 0; i < count; i++) {
+      const p = document.createElement('span');
+      p.className = 'particle';
+      p.textContent = chars[i % chars.length];
+      particles.appendChild(p);
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 130 + Math.random() * 300;
+      const dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist;
+      const dur = 700 + Math.random() * 800;
+      p.animate([
+        { transform: 'translate(-50%,-50%) translate(0,0) scale(0)', opacity: 1 },
+        { transform: `translate(-50%,-50%) translate(${dx}px,${dy}px) scale(${.6 + Math.random()}) rotate(${Math.random()*720-360}deg)`, opacity: 0 }
+      ], { duration: dur, easing: 'cubic-bezier(.15,.7,.3,1)' })
+       .onfinish = () => p.remove();
+    }
+  }
+
+  function startIdle() {
+    idleAnim = cardWrap.animate([
+      { transform: 'translateY(0) rotate(-1deg)' },
+      { transform: 'translateY(-10px) rotate(1deg)' },
+      { transform: 'translateY(0) rotate(-1deg)' }
+    ], { duration: 4200, iterations: Infinity, easing: 'ease-in-out' });
+  }
+
+  function showBadge(c) {
+    if (c.isNew) {
+      badge.textContent = 'NEW!';
+      badge.className = 'new';
+    } else if (c.count > 1) {
+      badge.textContent = '×' + c.count;
+      badge.className = 'dupe';
+    } else {
+      badge.className = '';
+      badge.textContent = '';
+      return;
+    }
+    badge.animate([
+      { transform: 'translate(-50%,-50%) scale(0) rotate(-20deg)', opacity: 0 },
+      { transform: 'translate(-50%,-50%) scale(1.25) rotate(6deg)', opacity: 1, offset: .35 },
+      { transform: 'translate(-50%,-50%) scale(1) rotate(0deg)', opacity: 1, offset: .75 },
+      { transform: 'translate(-50%,-50%) scale(1) rotate(0deg)', opacity: 0 }
+    ], { duration: 1900, easing: 'ease-out' });
+  }
+
+  function updateStats(c) {
+    if (c.unique == null) return;
+    stats.textContent = '�� ' + c.unique + ' unique  ·  ' + c.total + ' drawn';
+  }
+
+  const vscode = acquireVsCodeApi();
+
+  // Warm the browser cache for cards that are queued up in the extension's
+  // buffer, so preload() resolves instantly when one is actually drawn.
+  const warmed = new Set();
+  function prefetch(urls) {
+    for (const u of urls) {
+      if (!u || warmed.has(u)) continue;
+      warmed.add(u);
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = u;               // download now; kept alive by the cache
+    }
+  }
+
+  window.addEventListener('message', e => {
+    const m = e.data;
+    if (!m) return;
+    if (m.type === 'draw') draw(m.card);
+    else if (m.type === 'packOpening') beginPack(m.competitive);
+    else if (m.type === 'packCards') onPackCards(m.cards || []);
+    else if (m.type === 'prefetch') prefetch(m.urls || []);
+    else if (m.type === 'restore') restoreCard(m.card);
+    else if (m.type === 'credits') { credits = m.credits || 0; updateCompBtn(); }
+    else if (m.type === 'fetchFailed') handleFetchFailed();
+  });
+
+  // let the extension know we're listening, so it can send the first prefetch batch
+  vscode.postMessage({ type: 'ready' });
+
+  binderBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    vscode.postMessage({ type: 'openBinder' });
+  });
+
+  packBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (animating || awaitingRip || packState) return;
+    vscode.postMessage({ type: 'openPack' });
+  });
+
+  compBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (animating || awaitingRip || packState || credits <= 0) return;
+    vscode.postMessage({ type: 'openCompetitivePack' });
+  });
+
+  // build the game switcher; clicking another game asks the extension to swap
+  // (which reloads this panel with the new theme, so no client-side re-render).
+  gameToggle.innerHTML = GAMES.map(g =>
+    '<button class="seg' + (g.id === ACTIVE_GAME ? ' on' : '') + '" data-game="' +
+    g.id + '">' + g.label + '</button>').join('');
+  gameToggle.querySelectorAll('.seg').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    const id = b.getAttribute('data-game');
+    if (id !== ACTIVE_GAME) vscode.postMessage({ type: 'setGame', id });
+  }));
+
+  // pause all animation work while the panel is hidden/obscured
+  document.addEventListener('visibilitychange', () => {
+    const hidden = document.hidden;
+    document.body.classList.toggle('vw-hidden', hidden);
+    if (idleAnim) hidden ? idleAnim.pause() : idleAnim.play();
+  });
+
+  // click the field to draw a real card (asks the extension to fetch one)
+  field.addEventListener('click', () => {
+    if (animating) return;            // ignore taps mid-animation
+    if (awaitingRip) { ripPack(); return; }      // tear the pack open
+    if (packState) { revealNext(); return; }     // advance the reveal
+    if (packDone) { packDone = false; showStartScreen(); return; } // back to start
+    meta.style.opacity = 1;
+    meta.textContent = 'Drawing…';
+    vscode.postMessage({ type: 'requestDraw' });
+  });
+</script>
+</body>
+</html>
