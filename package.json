@@ -1,0 +1,98 @@
+{
+  "name": "ygo-duel",
+  "displayName": "YGO Duel Mode",
+  "description": "It's time to d-d-d-duel! Real trading-card draw animations inside VS Code.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "private": true,
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ygoDuel.openYugioh",
+        "title": "Cards: Open Yu-Gi-Oh Field"
+      },
+      {
+        "command": "ygoDuel.openPokemon",
+        "title": "Cards: Open Pokémon Field"
+      },
+      {
+        "command": "ygoDuel.draw",
+        "title": "Cards: Draw a Card!"
+      },
+      {
+        "command": "ygoDuel.openPack",
+        "title": "Cards: Open a Pack"
+      },
+      {
+        "command": "ygoDuel.openCompetitivePack",
+        "title": "Cards: Open Competitive Pack ��"
+      },
+      {
+        "command": "ygoDuel.setGithubToken",
+        "title": "Cards: Set GitHub Token (Competitive Packs)"
+      },
+      {
+        "command": "ygoDuel.setGithubServer",
+        "title": "Cards: Set GitHub Server (Competitive Packs)"
+      },
+      {
+        "command": "ygoDuel.checkMerges",
+        "title": "Cards: Check for Merged PRs"
+      },
+      {
+        "command": "ygoDuel.resetCompetitiveProgress",
+        "title": "Cards: Reset Competitive Progress (credits + cards + merge history)"
+      },
+      {
+        "command": "ygoDuel.open",
+        "title": "Cards: Open Field"
+      },
+      {
+        "command": "ygoDuel.toggleOnSave",
+        "title": "Cards: Toggle Draw-on-Save"
+      },
+      {
+        "command": "ygoDuel.openBinder",
+        "title": "Cards: Open Binder"
+      },
+      {
+        "command": "ygoDuel.resetCollection",
+        "title": "Cards: Reset Collection (active game + track)"
+      }
+    ],
+    "configuration": {
+      "title": "YGO Duel Mode",
+      "properties": {
+        "ygoDuel.drawOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Draw a random card every time you save a file."
+        },
+        "ygoDuel.github.apiBaseUrl": {
+          "type": "string",
+          "default": "https://api.github.com",
+          "description": "GitHub REST API base URL for Competitive packs. Defaults to plain github.com; use \"Cards: Set GitHub Server (Competitive Packs)\" to switch to an on-site GitHub Enterprise Server instead of editing this by hand."
+        },
+        "ygoDuel.trackedRepos": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Optional \"owner/repo\" allowlist for Competitive packs. Leave empty (default) to count merged PRs you authored across every repo the token can see."
+        },
+        "ygoDuel.pollIntervalMinutes": {
+          "type": "number",
+          "default": 15,
+          "description": "How often to poll GitHub in the background for newly-merged PRs."
+        }
+      }
+    }
+  }
+}
