@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'none';
+           style-src 'unsafe-inline';
+           script-src 'unsafe-inline';
+           img-src {{CSP_SOURCE}} {{IMG_HOSTS}} data:;">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: radial-gradient(ellipse at 50% 0%, #1c1636 0%, #0c0a18 70%);
+    color: #d8d2f0; font-family: "Segoe UI", system-ui, sans-serif;
+    min-height: 100vh; padding: 18px 20px 40px;
+  }
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+    margin-bottom: 18px;
+  }
+  h1 { font-size: 22px; letter-spacing: .5px; }
+  .stat {
+    font-size: 13px; color: #b9aef0;
+    background: rgba(50,40,90,.5); border: 1px solid #453a7a;
+    border-radius: 8px; padding: 5px 10px;
+  }
+  .stat b { color: #ffe07a; }
+  /* let the per-tier chips sit in the header flex row with the same gap */
+  #tierStats { display: contents; }
+  .spacer { flex: 1; }
+  input#search {
+    background: rgba(20,16,38,.9); border: 1px solid #4a3f82; color: #e6dcff;
+    border-radius: 8px; padding: 7px 12px; font-size: 13px; width: 200px;
+  }
+  button {
+    border: 1px solid #5b4fa0; border-radius: 8px; cursor: pointer;
+    font: 600 13px "Segoe UI"; padding: 7px 12px; color: #e6dcff;
+    background: rgba(60,48,110,.7);
+  }
+  button:hover { background: rgba(84,66,150,.9); }
+  button.danger { border-color: #7a3b4a; background: rgba(90,40,55,.6); color: #ffcdd6; }
+  button.danger:hover { background: rgba(130,50,70,.85); }
+  button.primary { border-color: #b8860b; background: linear-gradient(135deg,#ffcf3f,#ff8a00); color:#3a1c00; }
+  button:disabled { opacity: .45; cursor: default; }
+
+  /* game switcher — same look/behavior as the Field's, so the Binder can swap
+     games without needing the Field panel open at all */
+  #gameToggle {
+    display: flex; gap: 3px; padding: 2px;
+    background: rgba(20,16,38,.7); border: 1px solid #4a3f82; border-radius: 9px;
+  }
+  #gameToggle .seg {
+    font: 700 12px "Segoe UI", sans-serif;
+    color: #b6abe6; background: transparent; border: none; border-radius: 7px;
+    padding: 6px 10px; cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  #gameToggle .seg:hover { color: #e6dcff; background: rgba(90,72,150,.4); }
+  #gameToggle .seg.on {
+    color: #1a1030; background: linear-gradient(135deg,#ffcf3f,#ff8a00);
+    box-shadow: 0 0 12px rgba(255,170,40,.5);
+  }
+
+  /* Sandbox/Competitive segmented toggle — same look as the Field's game switcher */
+  #trackToggle {
+    display: flex; gap: 3px; padding: 2px;
+    background: rgba(20,16,38,.7); border: 1px solid #4a3f82; border-radius: 9px;
+  }
+  #trackToggle .seg {
+    font: 700 12px "Segoe UI", sans-serif;
+    color: #b6abe6; background: transparent; border: none; border-radius: 7px;
+    padding: 6px 10px; cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  #trackToggle .seg:hover { color: #e6dcff; background: rgba(90,72,150,.4); }
+  #trackToggle .seg.on {
+    color: #1a1030; background: linear-gradient(135deg,#ffcf3f,#ff8a00);
+    box-shadow: 0 0 12px rgba(255,170,40,.5);
+  }
+
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 16px;
+  }
+  .cell {
+    position: relative; background: rgba(30,24,54,.6);
+    border: 1px solid #3a3068; border-radius: 12px; padding: 8px;
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .cell:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+  .cell { cursor: pointer; }
+  /* .cell.<tier> rarity borders are generated from TIERS — see injectTierStyles() */
+  .thumb {
+    aspect-ratio: 59/86; border-radius: 8px; overflow: hidden;
+    background: radial-gradient(circle,#3a2f5c,#1c1733);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 48px;
+  }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cn {
+    font-size: 12px; font-weight: 600; margin-top: 7px; line-height: 1.2;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; min-height: 29px;
+  }
+  .count {
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(12,10,24,.85); border: 1px solid #6b5fb0;
+    border-radius: 999px; font-size: 11px; font-weight: 700;
+    padding: 2px 8px; color: #cfc4ff;
+  }
+  /* rarity markers on a cell — one per owned special tier, offset by JS (left) */
+  .tiertag {
+    position: absolute; top: 12px; font-size: 14px;
+    filter: drop-shadow(0 0 4px rgba(255,255,255,.85));
+  }
+  #empty {
+    text-align: center; color: #8a80b8; margin-top: 60px; font-size: 15px;
+    line-height: 1.7;
+  }
+
+  /* ── enlarge modal: click a card to pop it up full-size ────────── */
+  #modalOverlay {
+    position: fixed; inset: 0; background: rgba(6,4,14,.82);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; opacity: 0; visibility: hidden;
+    transition: opacity .18s ease, visibility .18s ease;
+  }
+  #modalOverlay.show { opacity: 1; visibility: visible; }
+  #modalCard {
+    position: relative; width: min(360px, 86vw); max-height: 88vh;
+    background: linear-gradient(160deg, #241c40, #14101f);
+    border: 1px solid #4a3f82; border-radius: 16px;
+    padding: 20px; overflow-y: auto;
+    box-shadow: 0 30px 70px rgba(0,0,0,.7);
+    transform: scale(.9) translateY(10px); transition: transform .18s ease;
+  }
+  #modalOverlay.show #modalCard { transform: scale(1) translateY(0); }
+  /* #modalCard.<tier> rarity glow is generated from TIERS — see injectTierStyles() */
+  #modalClose {
+    position: absolute; top: 10px; right: 10px; width: 30px; height: 30px;
+    border-radius: 50%; border: 1px solid #5b4fa0; background: rgba(60,48,110,.8);
+    color: #e6dcff; font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
+  }
+  #modalClose:hover { background: rgba(84,66,150,.95); }
+  .menlarge {
+    position: relative; aspect-ratio: 59/86; border-radius: 12px; overflow: hidden;
+    background: radial-gradient(circle,#3a2f5c,#1c1733);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 90px; margin-bottom: 14px;
+  }
+  .menlarge img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .menlarge .mholo {
+    position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen; opacity: .55;
+    background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.5) 48%, transparent 66%);
+    background-size: 250% 250%; animation: mshimmer 3.2s linear infinite;
+  }
+  /* #modalCard.<tier> .mholo sweeps are generated from TIERS — see injectTierStyles() */
+  @keyframes mshimmer { to { background-position: -250% 0; } }
+  .mname { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .mtype { font-size: 13px; color: #b9aef0; margin-bottom: 10px; }
+  .mstats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .mstats span {
+    font-size: 12px; background: rgba(50,40,90,.5); border: 1px solid #453a7a;
+    border-radius: 8px; padding: 4px 9px;
+  }
+  .mstats span b { color: #ffe07a; }
+  .mdesc { font-size: 12.5px; line-height: 1.5; color: #cfc4ff; margin-bottom: 10px; white-space: pre-wrap; }
+  .mmeta { font-size: 12px; color: #8a80b8; }
+</style>
+</head>
+<body>
+  <header>
+    <h1 id="title">�� Card Binder</h1>
+    <div id="gameToggle"></div>
+    <div id="trackToggle">
+      <button class="seg on" data-track="sandbox">�� Sandbox</button>
+      <button class="seg" data-track="competitive">�� Competitive</button>
+    </div>
+    <span class="stat">Unique: <b id="sUnique">0</b></span>
+    <span class="stat">Drawn: <b id="sTotal">0</b></span>
+    <span id="tierStats"></span>
+    <span class="spacer"></span>
+    <input id="search" type="text" placeholder="Search…" autocomplete="off">
+    <button class="primary" id="drawBtn">⚔️ Draw</button>
+    <button id="packBtn">�� Open Pack</button>
+    <button class="danger" id="resetBtn">Reset</button>
+  </header>
+  <div id="grid"></div>
+  <div id="empty" style="display:none"></div>
+
+  <div id="modalOverlay">
+    <div id="modalCard">
+      <button id="modalClose" title="Close">✕</button>
+      <div class="menlarge" id="modalArt"></div>
+      <div class="mname" id="modalName"></div>
+      <div class="mtype" id="modalType"></div>
+      <div class="mstats" id="modalStats"></div>
+      <div class="mdesc" id="modalDesc"></div>
+      <div class="mmeta" id="modalMeta"></div>
+    </div>
+  </div>
+
+<script>
+  const THEME = {{THEME}};
+  const TIERS = {{TIERS}};
+  // available games + which is active, for the in-panel switcher (mirrors duel.html)
+  const GAMES = {{GAMES}};
+  const ACTIVE_GAME = "{{ACTIVE_GAME}}";
+  // special (non-base) tiers, in rarest→common order — drives tags, chips, classes.
+  // Keys off `base` (mirroring the host's isSpecialTier) so a styled-but-tagless
+  // tier can't show up in the field but silently vanish here.
+  const SPECIAL_TIERS = TIERS.filter(t => !t.base);
+  const TIER_IDS = TIERS.map(t => t.id);
+  const vscode = acquireVsCodeApi();
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('empty');
+  const search = document.getElementById('search');
+  const gameToggle = document.getElementById('gameToggle');
+  const trackToggle = document.getElementById('trackToggle');
+  const drawBtn = document.getElementById('drawBtn');
+  const packBtn = document.getElementById('packBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  let allCards = [];
+  let shownCards = []; // the currently rendered (filtered+sorted) list, indexed for the modal
+  let track = 'sandbox';   // which collection is showing: 'sandbox' | 'competitive'
+  let credits = 0;         // Competitive pack credits available (only relevant on that track)
+
+  // which special tiers a collection entry has ever been pulled as
+  function ownedTiers(c) {
+    const counts = c.tierCounts || {};
+    return SPECIAL_TIERS.filter(t => (counts[t.id] || 0) > 0);
+  }
+
+  // Generate the per-tier cell/modal styling from the injected registry, so a
+  // tier's look lives only in extension.js (no hand-copied blocks per rarity).
+  (function injectTierStyles() {
+    const css = SPECIAL_TIERS.filter(t => t.style).map(t => {
+      const s = t.style;
+      return '.cell.' + t.id + ' { border-color: ' + s.accent + '; box-shadow: 0 0 18px ' + s.glow + '; }\n' +
+        '#modalCard.' + t.id + ' { border-color: ' + s.accent + '; ' +
+        'box-shadow: 0 30px 70px rgba(0,0,0,.7), 0 0 65px ' + s.glow + '; }\n' +
+        '#modalCard.' + t.id + ' .mholo { opacity: ' + s.holoOpacity + '; mix-blend-mode: ' + s.holoBlend + '; ' +
+        'background: ' + s.holo + '; background-size: 250% 250%; animation-duration: ' + s.holoSpeed + '; }';
+    }).join('\n');
+    const el = document.createElement('style');
+    el.textContent = css;
+    document.head.appendChild(el);
+  })();
+
+  // apply theme text
+  document.getElementById('title').textContent = THEME.binderTitle;
+  drawBtn.textContent = THEME.actionLabel;
+  search.placeholder = 'Search ' + THEME.itemPlural + '…';
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, m =>
+      ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m]));
+  }
+
+  // reflect the active track in the toggle, the Draw/Pack buttons (Competitive
+  // has no free single-draw — only credit-gated packs), and the empty state.
+  function updateTrackUI() {
+    trackToggle.querySelectorAll('.seg').forEach(b => b.classList.toggle('on', b.dataset.track === track));
+    drawBtn.style.display = track === 'competitive' ? 'none' : '';
+    resetBtn.textContent = 'Reset ' + (track === 'competitive' ? 'Competitive' : 'Sandbox');
+    if (track === 'competitive') {
+      packBtn.textContent = '�� Open Competitive Pack' + (credits > 0 ? ' (' + credits + ')' : '');
+      packBtn.disabled = credits <= 0;
+      packBtn.title = credits > 0 ? '' : 'Merge a PR to earn one';
+    } else {
+      packBtn.textContent = '�� Open Pack';
+      packBtn.disabled = false;
+      packBtn.title = '';
+    }
+    empty.innerHTML = track === 'competitive'
+      ? '�� No Competitive cards yet.<br>Merge a PR to earn your first pack!'
+      : 'No ' + THEME.itemPlural + ' yet.<br>Open some and they\'ll appear here! ⚔️';
+  }
+
+  function render() {
+    const q = search.value.trim().toLowerCase();
+    const cards = allCards
+      .filter(c => !q || (c.name || '').toLowerCase().includes(q))
+      .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+
+    shownCards = cards;
+    grid.innerHTML = cards.map((c, i) => {
+      const owned = ownedTiers(c);
+      const cls = owned.map(t => t.id).join(' ');
+      const tags = owned
+        .map((t, j) => '<div class="tiertag" style="left:' + (12 + j * 22) + 'px">' + t.tag + '</div>')
+        .join('');
+      const thumb = c.image
+        ? '<img loading="lazy" src="' + c.image + '" alt="">'
+        : (c.emoji || '��');
+      return (
+        '<div class="cell' + (cls ? ' ' + cls : '') + '" data-idx="' + i + '">' +
+          tags +
+          '<div class="count">×' + (c.count || 1) + '</div>' +
+          '<div class="thumb">' + thumb + '</div>' +
+          '<div class="cn">' + esc(c.name || '???') + '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    empty.style.display = allCards.length ? 'none' : 'block';
+  }
+
+  // ── enlarge modal: click a binder card to pop it up full-size ──────
+  const modalOverlay = document.getElementById('modalOverlay');
+  const modalCardEl  = document.getElementById('modalCard');
+  const modalArt     = document.getElementById('modalArt');
+  const modalName    = document.getElementById('modalName');
+  const modalType    = document.getElementById('modalType');
+  const modalStats   = document.getElementById('modalStats');
+  const modalDesc    = document.getElementById('modalDesc');
+  const modalMeta    = document.getElementById('modalMeta');
+
+  function openModal(c) {
+    const owned = ownedTiers(c);
+    modalCardEl.classList.remove(...TIER_IDS);
+    owned.forEach(t => modalCardEl.classList.add(t.id));
+
+    modalArt.innerHTML = c.image
+      ? '<img src="' + c.image + '" alt=""><div class="mholo"></div>'
+      : (c.emoji || '��') + '<div class="mholo"></div>';
+
+    modalName.textContent = c.name || '???';
+
+    const icon = (THEME.attrIcons && THEME.attrIcons[c[THEME.attrKey]]) || '';
+    modalType.textContent = [c.type, icon].filter(Boolean).join('   ');
+
+    modalStats.innerHTML = (THEME.stats || [])
+      .filter(s => c[s.key] != null)
+      .map(s => '<span>' + s.label + ' <b>' + esc(c[s.key]) + '</b></span>')
+      .join('');
+
+    modalDesc.textContent = c.desc || '';
+
+    const seen = c.firstSeen ? new Date(c.firstSeen).toLocaleDateString() : null;
+    modalMeta.textContent =
+      'Owned ×' + (c.count || 1) +
+      owned.map(t => '  ·  ' + t.tag + ' ' + c.tierCounts[t.id] + ' ' + t.label.toLowerCase()).join('') +
+      (seen ? '  ·  First caught ' + seen : '');
+
+    modalOverlay.classList.add('show');
+  }
+
+  function closeModal() { modalOverlay.classList.remove('show'); }
+
+  grid.addEventListener('click', e => {
+    const cell = e.target.closest('.cell');
+    if (!cell) return;
+    const c = shownCards[Number(cell.dataset.idx)];
+    if (c) openModal(c);
+  });
+  modalCardEl.addEventListener('click', e => e.stopPropagation());
+  modalOverlay.addEventListener('click', closeModal);
+  document.getElementById('modalClose').addEventListener('click', closeModal);
+  window.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+  window.addEventListener('message', e => {
+    const m = e.data;
+    if (!m || m.type !== 'collection') return;
+    track = m.track === 'competitive' ? 'competitive' : 'sandbox';
+    credits = m.credits || 0;
+    allCards = m.cards || [];
+    const counts = (m.stats && m.stats.tierCounts) || {};
+    document.getElementById('sUnique').textContent = allCards.length;
+    document.getElementById('sTotal').textContent = (m.stats && m.stats.total) || 0;
+    // one chip per special tier, built from the registry so new tiers auto-appear
+    document.getElementById('tierStats').innerHTML = SPECIAL_TIERS
+      .map(t => '<span class="stat">' + t.tag + ' ' + t.label + ': <b>' + (counts[t.id] || 0) + '</b></span>')
+      .join(' ');
+    updateTrackUI();
+    render();
+  });
+
+  search.addEventListener('input', render);
+  drawBtn.addEventListener('click',
+    () => vscode.postMessage({ type: 'requestDraw' }));
+  packBtn.addEventListener('click', () => {
+    if (track === 'competitive') {
+      if (credits <= 0) return;
+      vscode.postMessage({ type: 'openCompetitivePack' });
+    } else {
+      vscode.postMessage({ type: 'openPack' });
+    }
+  });
+  resetBtn.addEventListener('click',
+    () => vscode.postMessage({ type: 'reset' }));
+  trackToggle.querySelectorAll('.seg').forEach(b => b.addEventListener('click', () => {
+    const t = b.dataset.track;
+    if (t !== track) vscode.postMessage({ type: 'setTrack', track: t });
+  }));
+
+  // build the game switcher; clicking another game asks the extension to swap
+  // (which reloads this panel with the new theme, so no client-side re-render).
+  gameToggle.innerHTML = GAMES.map(g =>
+    '<button class="seg' + (g.id === ACTIVE_GAME ? ' on' : '') + '" data-game="' +
+    g.id + '">' + g.label + '</button>').join('');
+  gameToggle.querySelectorAll('.seg').forEach(b => b.addEventListener('click', () => {
+    const id = b.getAttribute('data-game');
+    if (id !== ACTIVE_GAME) vscode.postMessage({ type: 'setGame', id });
+  }));
+
+  vscode.postMessage({ type: 'ready' });
+</script>
+</body>
+</html>
