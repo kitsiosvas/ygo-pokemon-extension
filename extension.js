@@ -2,6 +2,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
+const util = require('util');
 const github = require('./github');
 
 // Available game definitions (data adapter + theme). Add a game by dropping a
@@ -772,9 +773,15 @@ function persistBufferSoon() {
  *  URL directly from the CDN (allowed by the CSP) and its own preload() waits
  *  for decode before painting — so harvest moves only tiny JSON metadata. */
 async function harvest(count) {
+  // util.inspect renders the full error as a plain string (message, stack,
+  // .cause chain, any AggregateError.errors) BEFORE logging — a bare Error
+  // object loses those custom properties when the Extension Host forwards
+  // console output to the main window's console, leaving only the generic
+  // "TypeError: fetch failed" wrapper undici throws with no way to see why.
+  const onFail = err => { console.error('[ygo-duel] card fetch failed:\n' + util.inspect(err, { depth: 10 })); };
   const burst = game.fetchBatch
-    ? await game.fetchBatch(count).catch(() => [])
-    : await Promise.all(Array.from({ length: count }, () => game.fetchOne().catch(() => null)));
+    ? await game.fetchBatch(count).catch(err => { onFail(err); return []; })
+    : await Promise.all(Array.from({ length: count }, () => game.fetchOne().catch(err => { onFail(err); return null; })));
   for (const c of burst) {
     if (c && game.keep(c) && !BUFFER.some(b => b.name === c.name)) {
       BUFFER.push(game.normalize(c));

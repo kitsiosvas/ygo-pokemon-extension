@@ -8,19 +8,22 @@
  * lower rate limit; drop a free key into the header below to raise it.
  */
 
+const { getJson } = require('../http');
+
 const api = 'https://api.pokemontcg.io/v2/cards';
 const MAX_PAGE = 15000; // stay safely under the ~19.5k total-card count
 const TOTAL_CARDS = 19000; // approx catalog size, for picking a random page by page-size
 
+// Optional: a free pokemontcg.io API key raises the rate limit. Drop it here
+// and it's forwarded on every request:  const KEY_HEADER = { 'X-Api-Key': '<key>' };
+const KEY_HEADER = {};
+
+
+
 async function fetchOne() {
   // pokemontcg.io has no "random" endpoint, so grab one card from a random page
   const page = 1 + Math.floor(Math.random() * MAX_PAGE);
-  const res = await fetch(api + '?pageSize=1&page=' + page, {
-    headers: { 'Accept': 'application/json' }
-    // headers: { 'X-Api-Key': '<your-free-key>' }  // optional: higher rate limit
-  });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const json = await res.json();
+  const json = await getJson(api + '?pageSize=1&page=' + page, KEY_HEADER);
   const c = json && Array.isArray(json.data) ? json.data[0] : null;
   if (!c || !c.name) throw new Error('unexpected API shape');
   return c;
@@ -40,12 +43,7 @@ const BATCH_PAGE_SIZE = 55;
 async function fetchBatch(/* count ignored — one big page is cheapest */) {
   const maxPage = Math.max(1, Math.floor(TOTAL_CARDS / BATCH_PAGE_SIZE));
   const page = 1 + Math.floor(Math.random() * maxPage);
-  const res = await fetch(api + '?pageSize=' + BATCH_PAGE_SIZE + '&page=' + page, {
-    headers: { 'Accept': 'application/json' }
-    // headers: { 'X-Api-Key': '<your-free-key>' }  // optional: higher rate limit
-  });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const json = await res.json();
+  const json = await getJson(api + '?pageSize=' + BATCH_PAGE_SIZE + '&page=' + page, KEY_HEADER);
   const data = json && Array.isArray(json.data) ? json.data : [];
   for (let i = data.length - 1; i > 0; i--) {   // Fisher–Yates shuffle
     const j = Math.floor(Math.random() * (i + 1));

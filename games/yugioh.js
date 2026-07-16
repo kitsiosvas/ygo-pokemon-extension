@@ -17,12 +17,12 @@
  *   theme                object   — display config, forwarded to the webviews
  */
 
+const { getJson } = require('../http');
+
 const api = 'https://db.ygoprodeck.com/api/v7/randomcard.php';
 
 async function fetchOne() {
-  const res = await fetch(api, { headers: { 'Accept': 'application/json' } });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const json = await res.json();
+  const json = await getJson(api);
   const c = json && Array.isArray(json.data) ? json.data[0] : json;
   if (!c || !c.name) throw new Error('unexpected API shape');
   return c;
