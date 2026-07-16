@@ -1,4 +1,3 @@
-
 /*
  * Tiny GET-JSON helper over Node's built-in https — deliberately NOT the global
  * fetch().

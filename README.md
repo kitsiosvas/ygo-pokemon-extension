@@ -46,8 +46,6 @@ The two "Open … Field" commands pick the **active game**; everything else
 (Draw, Open a Pack, Binder, Reset) operates on whichever game is active.
 Each game keeps its own collection, so they never mix.
 
-
-
 ### Competitive packs (optional)
 
 Every merged PR you authored, on a repo this checks, earns one Competitive

@@ -68,7 +68,6 @@ async function getToken(context) {
   return context.secrets.get(TOKEN_KEY);
 }
 
-
 async function promptForToken(context) {
   const token = await vscode.window.showInputBox({
     title: 'GitHub Personal Access Token',
@@ -125,8 +124,6 @@ async function promptForServer(context) {
   );
   return true;
 }
-
-
 
 /** Minimal GitHub REST/Search client — no npm dependency, this project ships
  *  with no build step, so we use Node's built-in https instead of node-fetch. */

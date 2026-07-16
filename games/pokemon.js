@@ -18,8 +18,6 @@ const TOTAL_CARDS = 19000; // approx catalog size, for picking a random page by 
 // and it's forwarded on every request:  const KEY_HEADER = { 'X-Api-Key': '<key>' };
 const KEY_HEADER = {};
 
-
-
 async function fetchOne() {
   // pokemontcg.io has no "random" endpoint, so grab one card from a random page
   const page = 1 + Math.floor(Math.random() * MAX_PAGE);

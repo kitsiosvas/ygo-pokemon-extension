@@ -1,4 +1,3 @@
-
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
@@ -148,7 +147,6 @@ function activate(context) {
   gameId = GAMES[savedGame] ? savedGame : DEFAULT_GAME;
   game = GAMES[gameId];
   sanitizeCollections(); // repair any collections a past cross-game race corrupted
-
   loadBufferCache(); // warm-start from last session so a reload doesn't hit the network cold
 
   context.subscriptions.push(
@@ -569,7 +567,6 @@ function recordCollection(card, tier, track) {
   return rec;
 }
 
-
 /** One-time repair for collections corrupted by the old cross-game buffer race
  *  (fixed in setActiveGame/persistBufferSoon): a card from one game could get
  *  filed into another game's collection, where it renders as a broken image
@@ -603,7 +600,6 @@ function sanitizeCollections() {
   }
   if (removed) console.log('[ygo-duel] sanitized ' + removed + ' cross-game card(s) from collections');
 }
-
 
 /** Roll tiers for a freshly-fetched batch of cards and compute what recording
  *  them WOULD look like, against a throwaway clone of the real collection —
@@ -704,8 +700,6 @@ const BUFFER_TARGET = 18;  // cards to keep ready (a few full packs of headroom)
 const REFILL_AT = 12;      // background top-up once we dip to this (still >= a full pack)
 let refilling = null;
 
-
-
 /** True if a card's art is served from a host this game's CSP allows — i.e. the
  *  card actually belongs to `g` (default: the active game). A card can only ever
  *  be shown or recorded when its host is allowlisted, so a foreign host means a
@@ -747,7 +741,6 @@ function flushBufferNow() {
     // best-effort; a missed flush just means this game warms from the network next time
   }
 }
-
 
 /** Debounced, best-effort snapshot so the next reload starts warm instead of empty. */
 function persistBufferSoon() {

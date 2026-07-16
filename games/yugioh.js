@@ -81,4 +81,3 @@ const theme = {
 };
 
 module.exports = { api, fetchOne, keep, normalize, power, theme };
-
