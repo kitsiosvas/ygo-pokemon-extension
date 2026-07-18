@@ -16,16 +16,31 @@ Competitive credit is spent.
 Each game splits into two collections/tracks:
 - **Sandbox** — the original, always-free draw/pack flow. Unlimited, no setup.
 - **Competitive ��** — packs earned only by merging your own PRs on GitHub (see
-  "Competitive packs" below). Its own separate collection, so grinding it never1
+  "Competitive packs" below). Its own separate collection, so grinding it never
   touches your Sandbox binder.
 
 > Personal project — not published, not distributed. Yu-Gi-Oh art is property of
 > Konami; Pokémon art is property of Nintendo / The Pokémon Company. This tool
 > only *displays* cards fetched live from public fan APIs for personal use.
 
-## Run it (no build needed)
+## Install (from a `.vsix`)
 
-1. Open this folder in VS Code: `code C:\Users\vakitsi\ygo-duel`
+Handed a `ygo-duel-X.Y.Z.vsix`? Install it — no build, no source checkout:
+
+- **VS Code UI:** Extensions view → `⋯` menu → **Install from VSIX…** → pick the file.
+- **CLI:** `code --install-extension ygo-duel-0.1.0.vsix`
+
+Then run **Developer: Reload Window**, open a Field from the Command Palette, and
+you're playing.
+
+**Upgrading and you already have a collection?** Run **Cards: Backfill Rarity &
+Prices for Existing Cards** once so your older cards pick up rarity/price (both
+games, both tracks). New draws already include them. See "Real card rarity &
+prices" below.
+
+## Run it from source (no build needed)
+
+1. Open this folder in VS Code: `code C:\Users\vakitsi\Desktop\ygo-duel`
 2. Press **F5** (Run → Start Debugging). A second VS Code window
    ("Extension Development Host") launches with the extension loaded.
 3. In that window, open the Command Palette (**Ctrl+Shift+P**) and run:
@@ -33,6 +48,7 @@ Each game splits into two collections/tracks:
    - **Cards: Open Pokémon Field** — switch to Pokémon (TCG cards)
    - **Cards: Draw a Card!** — draw a random card in the active game (Sandbox)
    - **Cards: Open a Pack** — rip a free 5-card Sandbox booster
+   - **Cards: Open Binder** — open the collection grid for the active game/track
    - **Cards: Toggle Draw-on-Save** — draw on every file save ��
    - **Cards: Open Competitive Pack ��** — spend one merge-earned credit on a
      5-card Competitive booster (disabled/no-ops at 0 credits)
@@ -41,10 +57,30 @@ Each game splits into two collections/tracks:
    - **Cards: Set GitHub Token (Competitive Packs)** — one-time setup, see below
    - **Cards: Check for Merged PRs** — manually sync now instead of waiting for
      the background poll
+   - **Cards: Reset Collection (active game + track)** — wipe the shown
+     collection for the active game; the other track/game is untouched
 
 The two "Open … Field" commands pick the **active game**; everything else
 (Draw, Open a Pack, Binder, Reset) operates on whichever game is active.
 Each game keeps its own collection, so they never mix.
+
+### Real card rarity & prices
+
+Every caught card also carries its **real-world rarity and market price**,
+pulled from the same APIs and shown on the card's popup in the Binder. For
+Yu-Gi-Oh, a card printed at several rarities is tracked as a *separate* binder
+entry per rarity (a Common and a Secret Rare "Dark Magician" each get their own
+slot); Pokémon cards are already per-printing at the source. This is separate
+from the ✨/�� draw-animation tiers, which are a random per-pull roll, not the
+card's actual rarity. The price also shows on the draw caption as a card is
+revealed, and the Binder header totals your whole collection's worth (price ×
+copies owned, for the shown track).
+
+Cards caught *before* this feature existed have no rarity/price yet. Run
+**Cards: Backfill Rarity & Prices for Existing Cards** once to fetch it for your
+whole collection (both games, both tracks). Safe to re-run: if the Pokémon API
+rate-limits and some cards come back "skipped", just run it again — it only
+retries what's left, until it reports "Nothing to backfill".
 
 ### Competitive packs (optional)
 
@@ -82,6 +118,7 @@ pack. Sandbox is untouched and always free — this is a separate, opt-in track:
 | `package.json` | Extension manifest — commands + `ygoDuel.drawOnSave` setting (static; VS Code reads this at load) |
 | `extension.js` | **Host logic.** Holds the `GAMES` registry + active-game switching, manages the two webview panels, runs the prefetch buffer, persists per-game collections (Sandbox + Competitive tracks). Game-agnostic. |
 | `github.js` | **Competitive packs' data layer.** PAT storage (SecretStorage), polls the GitHub Search API for merged PRs you authored (globally by default, or scoped to `ygoDuel.trackedRepos`), tracks the pack-credit balance. Never shows UI — `extension.js` owns all toasts. |
+| `http.js` | Tiny shared HTTPS JSON fetch helper used by both game adapters; forces https so card fetches work behind a TLS-inspecting proxy. |
 | `games/yugioh.js`, `games/pokemon.js` | **The game definitions** — the *only* places a game is hardcoded. Each exports a data adapter (`fetchOne`/`keep`/`normalize`/`power`) + a `theme` object (titles, words, stat rows, attr icons, image hosts, pack wordmark). |
 | `media/duel.html` | The Field — draw/pack CSS+JS animation, sandboxed in a webview. Theme-driven. |
 | `media/binder.html` | The Binder/Pokédex — collection grid view, sandboxed in a webview. Theme-driven. |
@@ -142,6 +179,7 @@ DST=~/.vscode/extensions/ygo-duel
 mkdir -p "$DST/games"
 cp "$SRC/extension.js"      "$DST/extension.js"
 cp "$SRC/github.js"         "$DST/github.js"
+cp "$SRC/http.js"           "$DST/http.js"
 cp "$SRC/games/"*.js        "$DST/games/"
 cp "$SRC/package.json"      "$DST/package.json"
 cp "$SRC/media/duel.html"   "$DST/media/duel.html"
@@ -162,9 +200,51 @@ cmd //c mklink //J "%USERPROFILE%\.vscode\extensions\ygo-duel" "%USERPROFILE%\De
 (Developing via **F5** / the Extension Development Host also loads this source
 directly and sidesteps the whole issue.)
 
+## Performance: if the Binder ever feels slow (future work)
+
+Not needed today — draws are already instant (a background prefetch buffer keeps
+cards ready; the network is never on the draw path). This is a note for later, in
+case the Binder gets sluggish once a collection grows to **thousands** of unique
+cards.
+
+**The weak spot.** Everything is O(collection size) per draw *while the Binder is
+open*, even though only one card changed:
+
+1. `recordCollection` re-serializes the **entire** collection to globalState every
+   draw (`extension.js` → `globalState.update(collectionKey, col)`).
+2. `sendCollection` posts `Object.values(col)` — the **whole** collection, full
+   card objects — over `postMessage` every draw (`extension.js`).
+3. Binder `render()` rebuilds **all** of `grid.innerHTML` (recreating every
+   `<img>`) on every `collection` message *and* every search keystroke
+   (`media/binder.html`).
+
+At hundreds of cards this is a few ms (invisible). At thousands, steps 2–3 become
+per-draw jank.
+
+**Measure before touching it.** Wrap the Binder's `render()` in
+`console.time('render')` / `console.timeEnd('render')` and draw a card. If it's
+< ~10 ms, the slowness is the **network** (blocked/slow card art — see the Cisco
+Umbrella note), not the code — leave the architecture alone.
+
+**The fix, if genuinely needed (a targeted change, not a rewrite).**
+
+- **Delta updates.** On a single draw, post `{ type: 'cardDelta', card, stats,
+  credits }` instead of the whole collection. The Binder patches its local
+  `allCards` and re-renders just that **one** cell + the stat chips. Keep the full
+  `collection` message only for initial load and track/game switches. This removes
+  the per-draw O(N) `postMessage` and the O(N) DOM rebuild. ~30–40 lines across
+  `extension.js` + `media/binder.html`.
+- Leave `globalState.update` as-is — VS Code batches those writes; not the
+  bottleneck.
+- Optional: debounce the search `render()` (currently O(N) per keystroke).
+
 ## Ideas to extend
 
 - Pick the monster by file type (`.py` → a Spellcaster, `.js` → a Machine…)
 - "Attack points" combo meter that climbs as you type
 - Trap-card flip on a failing test, Spell-card flash on a passing one
 - Sound effects (bundle your own audio into `media/`)
+- Pokémon's `fetchBatch` usually only ends up sampling ONE random page (55
+  cards) per refill, since that's almost always enough to hit `BUFFER_TARGET`
+  — packs can feel same-set-y as a result. Fix: have `fetchBatch` pull a few
+  smaller pages at independently-random page numbers instead of one big page.

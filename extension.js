@@ -210,6 +210,23 @@ function activate(context) {
       );
     }),
 
+    vscode.commands.registerCommand('ygoDuel.migrateCardData', async () => {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: '�� Backfilling rarity & prices…' },
+        async progress => {
+          const { migrated, skipped } = await migrateCardData((m, s) => {
+            progress.report({ message: m + ' done' + (s ? ' · ' + s + ' skipped' : '') });
+          });
+          vscode.window.showInformationMessage(
+            migrated || skipped
+              ? `�� Backfilled ${migrated} card${migrated === 1 ? '' : 's'}` + (skipped ? ` · ${skipped} skipped` : '') + '.'
+              : '�� Nothing to backfill — already up to date.'
+          );
+          if (binderPanel) sendCollection(binderTrack);
+        }
+      );
+    }),
+
     vscode.commands.registerCommand('ygoDuel.openBinder', () => openBinder(context)),
 
     vscode.commands.registerCommand('ygoDuel.resetCollection', () => resetCollection(binderTrack)),
@@ -601,6 +618,84 @@ function sanitizeCollections() {
   if (removed) console.log('[ygo-duel] sanitized ' + removed + ' cross-game card(s) from collections');
 }
 
+/** One-time (idempotent), network-backed backfill: cards caught before
+ *  rarity/price existed have neither field. For each such entry, re-fetch
+ *  that exact card by id and re-run it through the game's own normalize() —
+ *  for Yu-Gi-Oh, where normalize() now bakes the picked rarity into the id,
+ *  this moves the entry onto its new key, merging into a same-rarity entry
+ *  already there (count/tierCounts/firstSeen/lastSeen combined) rather than
+ *  overwriting it. Pokémon's id is already per-printing, so it never moves —
+ *  this just fills in rarity/price in place. Fetches sequentially (not in
+ *  parallel) to stay easy on both APIs, and skips past any single card's
+ *  fetch failure (deleted card, network blip) rather than aborting the run.
+ *  Safe to re-run: a second pass finds nothing left with no `rarity` key.
+ *
+ *  Paced with a delay between requests, plus one retry after a longer
+ *  backoff on failure: pokemontcg.io's keyless tier throttles hard under
+ *  back-to-back hits (measured: response times balloon to 10-60s and some
+ *  requests fail outright once a run of migrations hits it request after
+ *  request with no gap — the exact card is fine, it's just rate-limited). */
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+async function migrateCardData(onProgress) {
+  let migrated = 0, skipped = 0;
+  for (const gid of Object.keys(GAMES)) {
+    const g = GAMES[gid];
+    if (!g.fetchById) continue;
+    for (const track of ['sandbox', 'competitive']) {
+      const key = collectionKey(track, gid);
+      const snapshot = extCtx.globalState.get(key, {});
+      const pending = Object.keys(snapshot).filter(id => !('rarity' in snapshot[id]));
+      if (!pending.length) continue;
+      for (const id of pending) {
+        await sleep(300);
+        let fresh;
+        try {
+          fresh = g.normalize(await g.fetchById(id));
+        } catch (err) {
+          await sleep(1500); // longer backoff, then one retry before giving up
+          try {
+            fresh = g.normalize(await g.fetchById(id));
+          } catch (err2) {
+            console.error('[ygo-duel] migrate failed for ' + id + ': ' + util.inspect(err2, { depth: 10 }));
+            skipped++;
+            if (onProgress) onProgress(migrated, skipped);
+            continue;
+          }
+        }
+        // Re-read right before mutating (not the snapshot above) — the fetch
+        // just awaited is a real network round trip, during which a draw, a
+        // pack, a reset, or another run of this same command could have
+        // changed this exact collection. Reading fresh here, doing the whole
+        // mutation synchronously, and writing back immediately keeps the
+        // race window to ~zero, instead of the whole migration's duration.
+        const col = extCtx.globalState.get(key, {});
+        const entry = col[id];
+        if (!entry || 'rarity' in entry) {
+          if (onProgress) onProgress(migrated, skipped); // already handled (concurrent run) or drawn/reset away
+          continue;
+        }
+        delete col[id];
+        const target = col[fresh.id];
+        if (target) {
+          target.count += entry.count || 0;
+          for (const t of Object.keys(entry.tierCounts || {})) {
+            target.tierCounts[t] = (target.tierCounts[t] || 0) + entry.tierCounts[t];
+          }
+          target.firstSeen = Math.min(target.firstSeen || Infinity, entry.firstSeen || Infinity);
+          target.lastSeen = Math.max(target.lastSeen || 0, entry.lastSeen || 0);
+        } else {
+          col[fresh.id] = { ...entry, ...fresh }; // fresh display/rarity/price/id win; entry's bookkeeping survives
+        }
+        extCtx.globalState.update(key, col);
+        migrated++;
+        if (onProgress) onProgress(migrated, skipped);
+      }
+    }
+  }
+  return { migrated, skipped };
+}
+
 /** Roll tiers for a freshly-fetched batch of cards and compute what recording
  *  them WOULD look like, against a throwaway clone of the real collection —
  *  so a still-sealed pack can preview isNew/count/unique/total for the reveal
@@ -712,14 +807,16 @@ function cardBelongsToGame(card, g = game) {
 }
 
 /** Load whatever was left in the active game's buffer at the end of last session.
- *  Drops any wrong-game cards a past switch-race may have left in this file, so a
- *  corrupted cache self-heals on the next reload instead of feeding foreign cards
- *  into draws. */
+ *  Drops any wrong-game cards a past switch-race may have left in this file, plus
+ *  any old-schema cards from a pre-rarity/price build (no `rarity` key — a fresh
+ *  card legitimately with no rarity still has the key set to null, so it's kept).
+ *  Both self-heal on reload: dropped cards are just re-fetched with the current
+ *  normalize() instead of being served/recorded stale. */
 function loadBufferCache() {
   try {
     const cached = JSON.parse(fs.readFileSync(cachePath(), 'utf8'));
     if (Array.isArray(cached)) {
-      BUFFER.push(...cached.filter(c => c && c.name && cardBelongsToGame(c)).slice(0, BUFFER_TARGET));
+      BUFFER.push(...cached.filter(c => c && c.name && ('rarity' in c) && cardBelongsToGame(c)).slice(0, BUFFER_TARGET));
     }
   } catch {
     // no cache yet, or it's corrupt — ensureRefill() will populate it from the network

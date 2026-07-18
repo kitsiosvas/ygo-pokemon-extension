@@ -2,7 +2,7 @@
   "name": "ygo-duel",
   "displayName": "YGO Duel Mode",
   "description": "It's time to d-d-d-duel! Real trading-card draw animations inside VS Code.",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "publisher": "local",
   "private": true,
   "engines": {
@@ -58,6 +58,10 @@
       {
         "command": "ygoDuel.toggleOnSave",
         "title": "Cards: Toggle Draw-on-Save"
+      },
+      {
+        "command": "ygoDuel.migrateCardData",
+        "title": "Cards: Backfill Rarity & Prices for Existing Cards"
       },
       {
         "command": "ygoDuel.openBinder",

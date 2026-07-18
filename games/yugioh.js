@@ -20,11 +20,21 @@
 const { getJson } = require('../http');
 
 const api = 'https://db.ygoprodeck.com/api/v7/randomcard.php';
+const CARDINFO_API = 'https://db.ygoprodeck.com/api/v7/cardinfo.php';
 
 async function fetchOne() {
   const json = await getJson(api);
   const c = json && Array.isArray(json.data) ? json.data[0] : json;
   if (!c || !c.name) throw new Error('unexpected API shape');
+  return c;
+}
+
+/** Look up one exact, already-known card by its YGOPRODeck id — used to
+ *  backfill rarity/price onto cards caught before that data existed. */
+async function fetchById(id) {
+  const json = await getJson(CARDINFO_API + '?id=' + encodeURIComponent(id));
+  const c = json && Array.isArray(json.data) ? json.data[0] : null;
+  if (!c || !c.name) throw new Error('card not found: ' + id);
   return c;
 }
 
@@ -35,8 +45,27 @@ function keep(c) {
 }
 
 function normalize(c) {
+  // A card can have several real-world printings at different rarities (e.g.
+  // reprinted as both Ultra Rare and Starlight Rare) — pick one at random.
+  // Picking uniformly over card_sets (rather than an explicit rarity-rank
+  // table) already leans common: a card reprinted at Common in several
+  // structure decks has several array entries, while a one-off chase rarity
+  // has just one — no 20-years-of-rarity-names table to maintain.
+  const sets = Array.isArray(c.card_sets) ? c.card_sets : [];
+  const printing = sets.length ? sets[Math.floor(Math.random() * sets.length)] : null;
+  // Real-world price: any single market blanks out per card (e.g. a new set has
+  // no TCGplayer listing yet), so take the first market that lists a price.
+  const p = (c.card_prices && c.card_prices[0]) || {};
+  const price = ['cardmarket_price', 'tcgplayer_price', 'ebay_price', 'amazon_price', 'coolstuffinc_price']
+    .map(k => Number(p[k])).find(v => v > 0) || null;
+  const rarity = (printing && printing.set_rarity) || null;
+  const baseId = c.id != null ? c.id : c.name;
+
   return {
-    id: c.id != null ? c.id : c.name,
+    // Different rarities of the same card are different binder entries (a
+    // Common and a Secret Rare "Dark Magician" both fill their own slot) —
+    // falls back to the plain id when a card has no listed printings.
+    id: rarity ? baseId + ' · ' + rarity : baseId,
     name: c.name,
     image: c.card_images && c.card_images[0] && c.card_images[0].image_url,
     atk: typeof c.atk === 'number' ? c.atk : null,
@@ -44,7 +73,9 @@ function normalize(c) {
     level: c.level || c.linkval || null,
     attr: c.attribute || null,
     type: c.type || null,
-    desc: c.desc || ''
+    desc: c.desc || '',
+    rarity,
+    price
   };
 }
 
@@ -80,4 +111,4 @@ const theme = {
   packAspectRatio: '657 / 1181'
 };
 
-module.exports = { api, fetchOne, keep, normalize, power, theme };
+module.exports = { api, fetchOne, fetchById, keep, normalize, power, theme };

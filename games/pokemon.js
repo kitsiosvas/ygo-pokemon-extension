@@ -27,6 +27,16 @@ async function fetchOne() {
   return c;
 }
 
+/** Look up one exact, already-known card by its pokemontcg.io id — used to
+ *  backfill rarity/price onto cards caught before that data existed. The
+ *  by-id endpoint returns a single object under "data", not an array. */
+async function fetchById(id) {
+  const json = await getJson(api + '/' + encodeURIComponent(id), KEY_HEADER);
+  const c = json && json.data;
+  if (!c || !c.name) throw new Error('card not found: ' + id);
+  return c;
+}
+
 /* Batch fetch used by the buffer: ONE request for a big page. Two things make
  * this the right call for pokemontcg.io's slow, keyless-rate-limited API:
  *   - At this page size the API's ordering spans dozens of different sets in a
@@ -57,13 +67,20 @@ function keep(c) {
 
 function normalize(c) {
   const images = c.images || {};
+  // tcgplayer's price keys vary per card (holofoil, reverseHolofoil, ...) —
+  // just take whichever variant is first; skip a cardmarket (EUR) fallback,
+  // not worth mixing currencies for a for-fun feature.
+  const variants = c.tcgplayer && c.tcgplayer.prices && Object.values(c.tcgplayer.prices);
+  const price = variants && variants[0] && variants[0].market;
   return {
     id: c.id != null ? c.id : c.name,
     name: c.name,
     image: images.large || images.small || null,
     hp: c.hp ? Number(c.hp) : null,
     attr: (c.types && c.types[0]) || null,
-    type: (c.subtypes && c.subtypes.join(' / ')) || null
+    type: (c.subtypes && c.subtypes.join(' / ')) || null,
+    rarity: c.rarity || null,
+    price: price > 0 ? price : null
   };
 }
 
@@ -98,4 +115,4 @@ const theme = {
   packAspectRatio: '311 / 592'
 };
 
-module.exports = { api, fetchOne, fetchBatch, keep, normalize, power, theme };
+module.exports = { api, fetchOne, fetchById, fetchBatch, keep, normalize, power, theme };

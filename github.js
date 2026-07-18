@@ -16,10 +16,12 @@
  * input box, which IS the action) — so extension.js owns all toasts and can
  * decide when a poll result is worth interrupting the user about.
  *
- * The very first check for a person baselines instead of paying out: every
- * PR merged before that point is marked seen but earns nothing (otherwise
- * everyone's whole PR history dumps into their balance on day one), and they
- * get a flat WELCOME_BONUS instead. Only merges after the baseline count.
+ * The very first check for a person baselines instead of paying out: it
+ * records a cutoff timestamp and grants a flat WELCOME_BONUS, so nobody's
+ * whole PR history dumps into their balance on day one. From then on only PRs
+ * merged AFTER that timestamp earn a credit. The cutoff is a time, not the set
+ * of PRs seen at baseline, on purpose: a later token with wider scope (or new
+ * repo access) can suddenly reveal years-old PRs, and those must stay free.
  *
  * Exports (consumed by extension.js):
  *   promptForToken(context)   async — prompt + store a PAT in SecretStorage
@@ -41,6 +43,7 @@ const LOGIN_KEY = 'ygoDuel.competitive.login';
 const CREDITS_KEY = 'ygoDuel.competitive.packCredits';
 const CREDITED_PRS_KEY = 'ygoDuel.competitive.creditedPRs';
 const BASELINED_KEY = 'ygoDuel.competitive.baselined';
+const BASELINE_AT_KEY = 'ygoDuel.competitive.baselineAt';
 
 const PUBLIC_GITHUB_URL = 'https://api.github.com';
 
@@ -215,6 +218,15 @@ async function checkMerges(context) {
 
     const credited = context.globalState.get(CREDITED_PRS_KEY, {});
     const baselined = context.globalState.get(BASELINED_KEY, false);
+    let baselineAt = context.globalState.get(BASELINE_AT_KEY, '');
+    // Migrate installs baselined before baselineAt existed: without a cutoff
+    // timestamp, a newly-visible old PR (broader token scope, new repo access)
+    // looks freshly earned. Stamp "now" so everything already merged stays free.
+    if (baselined && !baselineAt) {
+      baselineAt = new Date().toISOString();
+      await context.globalState.update(BASELINE_AT_KEY, baselineAt);
+    }
+
     let newCredits = 0;
     for (const q of queries) {
       const items = await fetchMergedPRs(base, token, q);
@@ -222,13 +234,19 @@ async function checkMerges(context) {
         const key = repoFromUrl(item.repository_url) + '#' + item.number;
         if (credited[key]) continue;
         credited[key] = true;
-        if (baselined) newCredits++; // pre-baseline merges are marked seen but not paid
+        // Pay only for PRs merged AFTER the baseline moment. Marking a PR seen
+        // is idempotency (don't double-pay across polls); the timestamp is what
+        // stops a token with wider visibility from cashing in your whole history.
+        // ISO-8601 UTC strings compare lexicographically == chronologically.
+        const mergedAt = (item.pull_request && item.pull_request.merged_at) || item.closed_at || '';
+        if (baselined && mergedAt > baselineAt) newCredits++;
       }
     }
 
     const baseline = !baselined;
     if (baseline) {
       await context.globalState.update(BASELINED_KEY, true);
+      await context.globalState.update(BASELINE_AT_KEY, new Date().toISOString());
       newCredits += WELCOME_BONUS;
     }
 
@@ -242,12 +260,14 @@ async function checkMerges(context) {
   }
 }
 
-/** Wipe credits, credited-PR history, and the baseline flag — lets someone
- *  (or a mis-set-up test run) start Competitive over from scratch. */
+/** Wipe credits, credited-PR history, and the baseline (both the flag and its
+ *  cutoff timestamp) — lets someone (or a mis-set-up test run) start
+ *  Competitive over from scratch. The next checkMerges re-baselines cleanly. */
 async function resetProgress(context) {
   await context.globalState.update(CREDITS_KEY, 0);
   await context.globalState.update(CREDITED_PRS_KEY, {});
   await context.globalState.update(BASELINED_KEY, false);
+  await context.globalState.update(BASELINE_AT_KEY, undefined);
 }
 
 module.exports = {

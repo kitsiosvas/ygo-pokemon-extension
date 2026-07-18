@@ -478,7 +478,8 @@
     const bits = THEME.stats
       .filter(s => c[s.key] != null)
       .map(s => s.label + ' ' + c[s.key]);
-    meta.textContent = c.name + (bits.length ? '  ·  ' + bits.join(' / ') : '');
+    meta.textContent = c.name + (bits.length ? '  ·  ' + bits.join(' / ') : '')
+      + (c.price != null ? '  ·  $' + c.price.toFixed(2) : '');
   }
 
   function esc(s) {
