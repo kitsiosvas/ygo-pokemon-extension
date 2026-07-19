@@ -32,6 +32,15 @@
     background: rgba(20,16,38,.9); border: 1px solid #4a3f82; color: #e6dcff;
     border-radius: 8px; padding: 7px 12px; font-size: 13px; width: 200px;
   }
+  /* sort dropdown — options come from the SORTS registry (see script) */
+  select#sortSelect {
+    background: rgba(20,16,38,.9); border: 1px solid #4a3f82; color: #e6dcff;
+    border-radius: 8px; padding: 7px 10px; font: 600 13px "Segoe UI", sans-serif;
+    cursor: pointer; max-width: 160px;
+  }
+  select#sortSelect:hover { border-color: #6b5fb0; }
+  select#sortSelect:focus { outline: none; border-color: #ffcf3f; }
+  select#sortSelect option { background: #1c1636; color: #e6dcff; }
   button {
     border: 1px solid #5b4fa0; border-radius: 8px; cursor: pointer;
     font: 600 13px "Segoe UI"; padding: 7px 12px; color: #e6dcff;
@@ -180,6 +189,7 @@
     <span class="stat">Value: <b id="sValue">$0.00</b></span>
     <span id="tierStats"></span>
     <span class="spacer"></span>
+    <select id="sortSelect" title="Sort binder cards" aria-label="Sort binder cards"></select>
     <input id="search" type="text" placeholder="Search…" autocomplete="off">
     <button class="primary" id="drawBtn">⚔️ Draw</button>
     <button id="packBtn">�� Open Pack</button>
@@ -215,6 +225,7 @@
   const grid = document.getElementById('grid');
   const empty = document.getElementById('empty');
   const search = document.getElementById('search');
+  const sortSelect = document.getElementById('sortSelect');
   const gameToggle = document.getElementById('gameToggle');
   const trackToggle = document.getElementById('trackToggle');
   const drawBtn = document.getElementById('drawBtn');
@@ -224,6 +235,58 @@
   let shownCards = []; // the currently rendered (filtered+sorted) list, indexed for the modal
   let track = 'sandbox';   // which collection is showing: 'sandbox' | 'competitive'
   let credits = 0;         // Competitive pack credits available (only relevant on that track)
+
+  /*
+   * Sort modes — single source of truth for the dropdown + compare logic.
+   * To add a sort: push ONE entry here (id + label + compare). The <select>
+   * is built from this list; render() only looks up by id. No other edits.
+   *
+   *   id       stable machine key (persisted in webview state)
+   *   label    user-facing option text
+   *   compare  (a, b) => number; negative = a first. Ties fall through to
+   *            a shared lastSeen/name tie-break in render().
+   */
+  function cardPrice(c) {
+    // null/missing prices sort to the bottom in price mode (treat as -1)
+    return c.price != null && c.price > 0 ? c.price : -1;
+  }
+  const SORTS = [
+    {
+      id: 'recent',
+      label: 'Recent',
+      compare: (a, b) => (b.lastSeen || 0) - (a.lastSeen || 0) // newest first
+    },
+    {
+      id: 'price',
+      label: '$ Price',
+      compare: (a, b) => cardPrice(b) - cardPrice(a) // high → low
+    },
+  ];
+  const SORT_BY_ID = Object.fromEntries(SORTS.map(s => [s.id, s]));
+  const DEFAULT_SORT = 'recent';
+
+  // restore last pick across panel reloads; fall back if a removed id is stored
+  const savedState = vscode.getState() || {};
+  let sortMode = SORT_BY_ID[savedState.sortMode] ? savedState.sortMode : DEFAULT_SORT;
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, m =>
+      ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m]));
+  }
+
+  function setSortMode(id) {
+    if (!SORT_BY_ID[id] || id === sortMode) return;
+    sortMode = id;
+    vscode.setState(Object.assign({}, vscode.getState() || {}, { sortMode }));
+    sortSelect.value = sortMode;
+    render();
+  }
+
+  // build dropdown from the registry (not hand-written <option> tags)
+  sortSelect.innerHTML = SORTS.map(s =>
+    '<option value="' + s.id + '"' + (s.id === sortMode ? ' selected' : '') + '>' +
+    esc(s.label) + '</option>'
+  ).join('');
 
   // which special tiers a collection entry has ever been pulled as
   function ownedTiers(c) {
@@ -252,11 +315,6 @@
   drawBtn.textContent = THEME.actionLabel;
   search.placeholder = 'Search ' + THEME.itemPlural + '…';
 
-  function esc(s) {
-    return String(s).replace(/[&<>"]/g, m =>
-      ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m]));
-  }
-
   // reflect the active track in the toggle, the Draw/Pack buttons (Competitive
   // has no free single-draw — only credit-gated packs), and the empty state.
   function updateTrackUI() {
@@ -279,9 +337,17 @@
 
   function render() {
     const q = search.value.trim().toLowerCase();
+    const sorter = SORT_BY_ID[sortMode] || SORT_BY_ID[DEFAULT_SORT];
     const cards = allCards
       .filter(c => !q || (c.name || '').toLowerCase().includes(q))
-      .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+      .sort((a, b) => {
+        const d = sorter.compare(a, b);
+        if (d !== 0) return d;
+        // shared tie-break: newest pull, then name — keeps order stable
+        const seen = (b.lastSeen || 0) - (a.lastSeen || 0);
+        if (seen !== 0) return seen;
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
 
     shownCards = cards;
     grid.innerHTML = cards.map((c, i) => {
@@ -382,6 +448,7 @@
   });
 
   search.addEventListener('input', render);
+  sortSelect.addEventListener('change', () => setSortMode(sortSelect.value));
   drawBtn.addEventListener('click',
     () => vscode.postMessage({ type: 'requestDraw' }));
   packBtn.addEventListener('click', () => {

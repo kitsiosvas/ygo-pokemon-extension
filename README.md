@@ -170,13 +170,24 @@ checkout. Editing the files here does **not** affect the running extension until
 that installed copy is updated — so after any change you must sync it and then
 run **Developer: Reload Window**.
 
-**Option A — manual sync (current setup).** Copy the changed files into the
-installed copy, then reload the window:
+**Option A — PowerShell sync (Windows, recommended).** From this repo root:
+
+```powershell
+.\sync-to-vscode.ps1
+# preview only:  .\sync-to-vscode.ps1 -WhatIf
+```
+
+Copies `extension.js`, `github.js`, `http.js`, `package.json`, `games\*.js`,
+`media\duel.html`, `media\binder.html`, and any `media\pack-*` art into
+`%USERPROFILE%\.vscode\extensions\ygo-duel\`. Then run **Developer: Reload
+Window**.
+
+**Option A2 — manual sync (bash).** Same file set, hand-copied:
 
 ```bash
 SRC=~/Desktop/ygo-duel
 DST=~/.vscode/extensions/ygo-duel
-mkdir -p "$DST/games"
+mkdir -p "$DST/games" "$DST/media"
 cp "$SRC/extension.js"      "$DST/extension.js"
 cp "$SRC/github.js"         "$DST/github.js"
 cp "$SRC/http.js"           "$DST/http.js"
@@ -192,9 +203,10 @@ cp "$SRC/media/pack-"*      "$DST/media/" 2>/dev/null   # if you changed a pack 
 folder with a directory junction pointing at this source, so edits are picked up
 directly and you only ever reload the window:
 
-```bash
-rm -rf ~/.vscode/extensions/ygo-duel
-cmd //c mklink //J "%USERPROFILE%\.vscode\extensions\ygo-duel" "%USERPROFILE%\Desktop\ygo-duel"
+```powershell
+# PowerShell (run as needed; adjust -Value if your checkout path differs)
+Remove-Item -Recurse -Force "$env:USERPROFILE\.vscode\extensions\ygo-duel" -ErrorAction SilentlyContinue
+cmd /c mklink /J "%USERPROFILE%\.vscode\extensions\ygo-duel" "%USERPROFILE%\Desktop\ygo-pokemon-extension"
 ```
 
 (Developing via **F5** / the Extension Development Host also loads this source
@@ -243,7 +255,6 @@ Umbrella note), not the code — leave the architecture alone.
 - Pick the monster by file type (`.py` → a Spellcaster, `.js` → a Machine…)
 - "Attack points" combo meter that climbs as you type
 - Trap-card flip on a failing test, Spell-card flash on a passing one
-- Sound effects (bundle your own audio into `media/`)
 - Pokémon's `fetchBatch` usually only ends up sampling ONE random page (55
   cards) per refill, since that's almost always enough to hit `BUFFER_TARGET`
   — packs can feel same-set-y as a result. Fix: have `fetchBatch` pull a few
