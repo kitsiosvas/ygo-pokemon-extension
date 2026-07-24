@@ -27,67 +27,8 @@ const FOCUS_POLL_MIN_GAP_MS = 5 * 60 * 1000; // don't re-poll on every window-fo
 
 const ACTIVE_GAME_KEY = 'ygoDuel.activeGame';
 
-/*
- * Rarity tiers — the SINGLE source of truth for both odds AND look. Every pull
- * gets exactly one tier. To add a rarity: add ONE entry here (rarest first) —
- * nothing else changes. The webviews generate the per-tier CSS from this list
- * and build the banner word from `wordTemplate` + the game's `theme.revealNoun`,
- * so no per-game or per-webview edits are needed.
- *
- *   id            internal key; also the CSS class the webview toggles on a card
- *   chance        roll probability; tiers are tried rarest-first, so keep this
- *                 list sorted rarest→common. Last tier is the catch-all (chance 0).
- *   bump          rarityScore boost → how late in a pack it reveals (rarer = later)
- *   label/tag     binder display: chip label + emoji marker (base tier: empty)
- *   wordTemplate  banner text; `{noun}` is replaced with theme.revealNoun. Omit
- *                 for the base tier (it uses theme.drawWord verbatim).
- *   chars/particles/flash/flashMs/bannerColor  reveal-animation knobs (webview)
- *   style         per-tier visual identity the webviews turn into CSS:
- *                   accent      border color (binder cell + modal)
- *                   glow        colored glow for binder borders
- *                   cardGlow    glow around the risen field card
- *                   holo        holographic-sweep gradient
- *                   holoOpacity / holoBlend / holoSpeed  sweep tuning
- */
-const TIERS = [
-  { id: 'prismatic', chance: 0.005, bump: 1000000, label: 'Prismatic', tag: '��',
-    wordTemplate: '�� PRISMATIC {noun}! ��',
-    chars: ['��','✨','��','��','⭐','��'], particles: 90, flash: 1, flashMs: 850, bannerColor: '#ffffff',
-    style: { accent: '#c199ff', glow: 'rgba(160,120,255,.6)', cardGlow: 'rgba(255,255,255,.75)',
-      holo: 'linear-gradient(115deg, #ff3b6b, #ffb03b, #f6ff3b, #4bff8a, #3bd4ff, #a03bff, #ff3b6b)',
-      holoOpacity: 0.9, holoBlend: 'color-dodge', holoSpeed: '1.4s' } },
-  { id: 'shiny', chance: 0.06, bump: 100000, label: 'Shiny', tag: '✨',
-    wordTemplate: '✨ SHINY {noun}! ✨',
-    chars: ['⭐','✨','��','��','��','��'], particles: 60, flash: 1, flashMs: 620, bannerColor: '#fff2b0',
-    style: { accent: '#d9a800', glow: 'rgba(255,200,60,.55)', cardGlow: 'rgba(255,215,80,.85)',
-      holo: 'linear-gradient(115deg, transparent 25%, rgba(255,225,120,.6) 42%, rgba(255,255,255,.75) 50%, rgba(255,205,80,.6) 58%, transparent 75%)',
-      holoOpacity: 0.8, holoBlend: 'screen', holoSpeed: '1.8s' } },
-  { id: 'normal', chance: 0, bump: 0, label: '', tag: '', base: true,
-    chars: ['⭐','✨','��','��','��'], particles: 40, flash: 0.85, flashMs: 420, bannerColor: '#ffe680' }
-];
-const TIER_BY_ID = Object.fromEntries(TIERS.map(t => [t.id, t]));
-
-/** The one "is this a special (non-base) tier?" test — the single predicate for
- *  specialness, shared by the host and (mirrored) by both webviews. Keying off
- *  the explicit `base` flag keeps host + webviews from ever disagreeing. */
-function isSpecialTier(id) {
-  const t = TIER_BY_ID[id];
-  return !!t && !t.base;
-}
-
-/** Roll a pull's tier: try each tier rarest-first, else fall to the catch-all. */
-function rollTier() {
-  const r = Math.random();
-  let acc = 0;
-  for (const t of TIERS) {
-    acc += t.chance;
-    if (r < acc) return t.id;
-  }
-  return TIERS[TIERS.length - 1].id;
-}
-
-/** A fresh, tier-agnostic stats record (per-tier counts live in tierCounts). */
-function emptyStats() { return { total: 0, tierCounts: {} }; }
+/** A fresh stats record. */
+function emptyStats() { return { total: 0 }; }
 
 // Collection/stats are namespaced per game so they never mix. Yu-Gi-Oh keeps
 // the original un-suffixed keys so existing collections aren't orphaned.
@@ -294,8 +235,7 @@ function ensurePanel(context) {
 }
 
 /** Read a webview HTML file and fill in the templated placeholders: the CSP
- *  source + allowed image hosts, the game theme + rarity tiers (as JSON), and
- *  the pack image. */
+ *  source + allowed image hosts, the game theme (as JSON), and the pack image. */
 function renderHtml(webview, file) {
   const raw = fs.readFileSync(path.join(extCtx.extensionPath, 'media', file), 'utf8');
   const games = Object.keys(GAMES).map(id => ({ id, label: GAMES[id].theme.toggleLabel || id }));
@@ -304,7 +244,6 @@ function renderHtml(webview, file) {
     .replace(/{{IMG_HOSTS}}/g, game.theme.imgHosts)
     .replace(/{{THEME}}/g, JSON.stringify(game.theme))
     .replace(/{{GAMES}}/g, JSON.stringify(games))
-    .replace(/{{TIERS}}/g, JSON.stringify(TIERS))
     .replace(/{{ACTIVE_GAME}}/g, gameId)
     .replace(/{{PACK_IMG}}/g, packImageUri(webview));
 }
@@ -330,11 +269,9 @@ async function doDraw() {
     vscode.window.showWarningMessage("⚠️ Couldn't fetch a card right now — check your connection and try again.");
     return;
   }
-  const tier = rollTier();
-  const rec = recordCollection(card, tier);
+  const rec = recordCollection(card);
   const payload = {
     ...card,
-    tier,
     isNew: rec.isNew,
     count: rec.count,
     unique: rec.unique,
@@ -486,7 +423,7 @@ async function doPack(track = 'sandbox') {
     return;
   }
   const cards = previewPack(draws, track);
-  // reveal weakest first so the best card lands last (prismatic trumps shiny)
+  // reveal weakest first so the strongest card lands last
   cards.sort((a, b) => rarityScore(a) - rarityScore(b));
   pendingPack = { cards, track, competitive };
 
@@ -524,7 +461,7 @@ async function commitPendingPack() {
     updateStatusBar();
     sendCredits();
   }
-  for (const c of cards) recordCollection(c, c.tier, track);
+  for (const c of cards) recordCollection(c, track);
   if (binderPanel && binderTrack === track) sendCollection(track);
 }
 
@@ -536,12 +473,11 @@ function discardPendingPack() {
   ripBeforeReady = false; // a remembered early-rip is moot once the pack is abandoned
 }
 
-/** Higher = revealed later. The tier's bump dominates (rarer reveals last),
- *  new cards get a smaller bump, then the game's base power (e.g. ATK). */
+/** Higher = revealed later. New cards get a bump so they land later in a pack,
+ *  then the game's base power (e.g. ATK) orders the rest. */
 function rarityScore(c) {
   let s = game.power(c) || 0;
   if (c.isNew) s += 3000;
-  s += (TIER_BY_ID[c.tier] || {}).bump || 0;
   return s;
 }
 
@@ -549,7 +485,7 @@ function rarityScore(c) {
  *  return progress info. Doesn't touch globalState — recordCollection uses it
  *  against the live collection, previewPack uses it against a throwaway
  *  clone so a sealed pack can be shown without actually being recorded. */
-function applyDraw(col, stats, card, tier) {
+function applyDraw(col, stats, card) {
   const id = String(card.id || card.name);
   const existing = col[id];
   const isNew = !existing;
@@ -559,26 +495,23 @@ function applyDraw(col, stats, card, tier) {
     ...card,
     id,
     count: 0,
-    tierCounts: {},
     firstSeen: Date.now()
   };
   entry.count += 1;
-  if (isSpecialTier(tier)) entry.tierCounts[tier] = (entry.tierCounts[tier] || 0) + 1;
   entry.lastSeen = Date.now();
   col[id] = entry;
 
   stats.total += 1;
-  if (isSpecialTier(tier)) stats.tierCounts[tier] = (stats.tierCounts[tier] || 0) + 1;
 
   return { isNew, count: entry.count, unique: Object.keys(col).length, total: stats.total };
 }
 
 /** Record a draw into the persistent collection; returns progress info.
  *  `track` is 'sandbox' (default) or 'competitive' — see collectionKey(). */
-function recordCollection(card, tier, track) {
+function recordCollection(card, track) {
   const col = extCtx.globalState.get(collectionKey(track), {});
   const stats = extCtx.globalState.get(statsKey(track), emptyStats());
-  const rec = applyDraw(col, stats, card, tier);
+  const rec = applyDraw(col, stats, card);
   extCtx.globalState.update(collectionKey(track), col);
   extCtx.globalState.update(statsKey(track), stats);
   return rec;
@@ -589,33 +522,41 @@ function recordCollection(card, tier, track) {
  *  filed into another game's collection, where it renders as a broken image
  *  under the wrong CSP. Drop any such foreign-host entries from every
  *  game/track collection and rebuild that track's stats from what survives
- *  (stats.total is the sum of per-card counts; stats.tierCounts the sum of
- *  per-card tierCounts — so this reconciles exactly). No-op once clean, so it's
- *  cheap to run on every activation. */
+ *  (stats.total is the sum of per-card counts — so this reconciles exactly).
+ *  Also strips the dead `tierCounts` field left on entries and stats by the old
+ *  reveal-tier system (removed — every card now reveals the same), so old
+ *  collections converge to the current schema. No-op once clean, so it's cheap
+ *  to run on every activation. */
 function sanitizeCollections() {
-  let removed = 0;
+  let removed = 0, stripped = 0;
   for (const gid of Object.keys(GAMES)) {
     const g = GAMES[gid];
     for (const track of ['sandbox', 'competitive']) {
       const key = collectionKey(track, gid);
       const col = extCtx.globalState.get(key, {});
-      let changed = false;
+      let colDirty = false;
       for (const id of Object.keys(col)) {
-        if (!cardBelongsToGame(col[id], g)) { delete col[id]; removed++; changed = true; }
+        if (!cardBelongsToGame(col[id], g)) { delete col[id]; removed++; colDirty = true; continue; }
+        if (col[id] && 'tierCounts' in col[id]) { delete col[id].tierCounts; stripped++; colDirty = true; }
       }
-      if (!changed) continue;
-      const stats = emptyStats();
-      for (const id of Object.keys(col)) {
-        stats.total += col[id].count || 0;
-        for (const t of Object.keys(col[id].tierCounts || {})) {
-          stats.tierCounts[t] = (stats.tierCounts[t] || 0) + col[id].tierCounts[t];
-        }
+
+      const stats = extCtx.globalState.get(statsKey(track, gid), emptyStats());
+      let statsDirty = false;
+      // a dropped foreign card changes the total; rebuild it from the survivors
+      if (colDirty) {
+        const total = Object.keys(col).reduce((s, id) => s + (col[id].count || 0), 0);
+        if (stats.total !== total) { stats.total = total; statsDirty = true; }
       }
-      extCtx.globalState.update(key, col);
-      extCtx.globalState.update(statsKey(track, gid), stats);
+      // drop the old system's per-tier stat tally
+      if ('tierCounts' in stats) { delete stats.tierCounts; statsDirty = true; }
+
+      if (colDirty) extCtx.globalState.update(key, col);
+      if (statsDirty) extCtx.globalState.update(statsKey(track, gid), stats);
     }
   }
-  if (removed) console.log('[ygo-duel] sanitized ' + removed + ' cross-game card(s) from collections');
+  if (removed || stripped) {
+    console.log('[ygo-duel] sanitized ' + removed + ' cross-game card(s); stripped legacy tier data from ' + stripped + ' entr' + (stripped === 1 ? 'y' : 'ies'));
+  }
 }
 
 /** One-time (idempotent), network-backed backfill: cards caught before
@@ -623,7 +564,7 @@ function sanitizeCollections() {
  *  that exact card by id and re-run it through the game's own normalize() —
  *  for Yu-Gi-Oh, where normalize() now bakes the picked rarity into the id,
  *  this moves the entry onto its new key, merging into a same-rarity entry
- *  already there (count/tierCounts/firstSeen/lastSeen combined) rather than
+ *  already there (count/firstSeen/lastSeen combined) rather than
  *  overwriting it. Pokémon's id is already per-printing, so it never moves —
  *  this just fills in rarity/price in place. Fetches sequentially (not in
  *  parallel) to stay easy on both APIs, and skips past any single card's
@@ -679,9 +620,6 @@ async function migrateCardData(onProgress) {
         const target = col[fresh.id];
         if (target) {
           target.count += entry.count || 0;
-          for (const t of Object.keys(entry.tierCounts || {})) {
-            target.tierCounts[t] = (target.tierCounts[t] || 0) + entry.tierCounts[t];
-          }
           target.firstSeen = Math.min(target.firstSeen || Infinity, entry.firstSeen || Infinity);
           target.lastSeen = Math.max(target.lastSeen || 0, entry.lastSeen || 0);
         } else {
@@ -696,8 +634,8 @@ async function migrateCardData(onProgress) {
   return { migrated, skipped };
 }
 
-/** Roll tiers for a freshly-fetched batch of cards and compute what recording
- *  them WOULD look like, against a throwaway clone of the real collection —
+/** Compute what recording a freshly-fetched batch of cards WOULD look like,
+ *  against a throwaway clone of the real collection —
  *  so a still-sealed pack can preview isNew/count/unique/total for the reveal
  *  without writing anything real yet. Actual persistence happens later, in
  *  commitPendingPack(), once the player has ripped the pack open. */
@@ -706,9 +644,8 @@ function previewPack(rawCards, track) {
   const stats = JSON.parse(JSON.stringify(extCtx.globalState.get(statsKey(track), emptyStats())));
   let lastRec;
   const cards = rawCards.map(card => {
-    const tier = rollTier();
-    lastRec = applyDraw(col, stats, card, tier);
-    return { ...card, tier, isNew: lastRec.isNew, count: lastRec.count };
+    lastRec = applyDraw(col, stats, card);
+    return { ...card, isNew: lastRec.isNew, count: lastRec.count };
   });
   // show the final tallies steadily through the reveal
   cards.forEach(c => { c.unique = lastRec.unique; c.total = lastRec.total; });

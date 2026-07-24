@@ -90,10 +90,8 @@ const theme = {
   fieldTitle: '�� Duel Field',
   binderTitle: '�� Card Binder',
   // action words shown in banners / buttons / empty states.
-  // drawWord = the base-tier banner; revealNoun fills each rarer tier's
-  // wordTemplate (e.g. "✨ SHINY {noun}! ✨" → "✨ SHINY DRAW! ✨").
+  // drawWord = the reveal banner shown on every draw/pack card.
   drawWord: 'DRAW!',
-  revealNoun: 'DRAW',
   actionLabel: '⚔️ Draw',
   itemPlural: 'monsters',
   // CSP img-src hosts the webviews are allowed to load art from

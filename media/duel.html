@@ -269,9 +269,6 @@
   }
   .pack-top    { clip-path: inset(0 0 50% 0 round 14px 14px 0 0); }   /* top 50% slice */
   .pack-bottom { clip-path: inset(49% 0 0 0 round 0 0 14px 14px); }   /* bottom 51% (1% overlap) */
-
-  /* Per-tier card treatment (#card.<id> + its .holo sweep) is generated at
-     load from the injected TIERS registry — see injectTierStyles() below. */
 </style>
 </head>
 <body>
@@ -302,42 +299,9 @@
   // available games + which is active, for the in-panel switcher
   const GAMES = {{GAMES}};
   const ACTIVE_GAME = "{{ACTIVE_GAME}}";
-  // rarity tiers injected by the extension (reveal look + banner per tier)
-  const TIERS = {{TIERS}};
-  const TIER_BY_ID = Object.fromEntries(TIERS.map(t => [t.id, t]));
-  const TIER_IDS = TIERS.map(t => t.id);
-  // special (non-base) tiers — the one "specialness" test, mirroring the host's
-  // isSpecialTier(). Everything tier-conditional keys off `base`, never a literal id.
-  const SPECIAL_TIERS = TIERS.filter(t => !t.base);
-  const isSpecialId = id => { const t = TIER_BY_ID[id]; return !!t && !t.base; };
-
-  // toggle a card's tier class: drop all tier classes, add the active one
-  function applyTier(el, tier) {
-    el.classList.remove(...TIER_IDS);
-    if (isSpecialId(tier)) el.classList.add(tier);
-  }
-
-  // banner text for a tier: fill its template with the game's noun, or (base
-  // tier, no template) fall back to the game's plain reveal word.
-  function tierWord(t) {
-    return t.wordTemplate
-      ? t.wordTemplate.replace('{noun}', THEME.revealNoun || '')
-      : THEME.drawWord;
-  }
-
-  // Generate the per-tier reveal CSS from the injected registry — the tiers'
-  // look lives in one place (extension.js), not hand-copied here per rarity.
-  (function injectTierStyles() {
-    const css = SPECIAL_TIERS.filter(t => t.style).map(t => {
-      const s = t.style;
-      return '#card.' + t.id + ' { box-shadow: 0 18px 55px rgba(0,0,0,.7), 0 0 50px ' + s.cardGlow + '; }\n' +
-        '#card.' + t.id + ' .holo { opacity: ' + s.holoOpacity + '; mix-blend-mode: ' + s.holoBlend + '; ' +
-        'background: ' + s.holo + '; background-size: 250% 250%; animation-duration: ' + s.holoSpeed + '; }';
-    }).join('\n');
-    const el = document.createElement('style');
-    el.textContent = css;
-    document.head.appendChild(el);
-  })();
+  // One fixed reveal look for every card — no per-rarity variation. Rarity and
+  // price are surfaced as text (in the meta line and the binder), not as tiers.
+  const REVEAL = { chars: ['⭐','✨','��','��','��'], particles: 40, flash: 0.85, flashMs: 420 };
 
   const field    = document.getElementById('field');
   field.style.setProperty('--pack-ar', THEME.packAspectRatio || '657 / 1181');
@@ -435,7 +399,6 @@
   packEl.innerHTML = PACK_MARKUP;
 
   let idleAnim = null;
-  let lastTier = 'normal';   // tier of the card currently on the field
   let animating = false;
   let packState = null;   // { cards, index, waiting, competitive } while opening a pack
   let awaitingRip = false; // pack wrapper is showing, waiting for the rip
@@ -503,9 +466,7 @@
   async function draw(c, packLabel) {
     animating = true;
     await preload(c.imageData || c.image);
-    lastTier = c.tier || 'normal';
     render(c);
-    applyTier(card, lastTier);
     // tag with ACTIVE_GAME (baked in at render time) rather than trusting the
     // host's current game — this page is always for the game it was rendered
     // for, even if the host has since switched while this message is in flight
@@ -553,9 +514,7 @@
   async function restoreCard(c) {
     if (animating || packState || awaitingRip || packDone) return;
     await preload(c.imageData || c.image);
-    lastTier = c.tier || 'normal';
     render(c);
-    applyTier(card, lastTier);
     updateStats(c);
     hint.style.display = 'none';
     cardWrap.style.opacity = 1;
@@ -613,7 +572,6 @@
   // present the sealed foil pack and wait for the player to rip it
   function showPackWrapper() {
     card.innerHTML = '';
-    applyTier(card, 'normal');
     meta.style.opacity = 0;
     badge.textContent = ''; badge.className = '';
     hint.style.display = 'none';
@@ -645,7 +603,7 @@
 
     flash.animate([{ opacity: .9 }, { opacity: 0 }], { duration: 420, easing: 'ease-out' });
     shake();
-    burst('normal');
+    burst();
 
     top.animate([
       { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
@@ -690,14 +648,9 @@
     const cards = packState.cards;
     const competitive = packState.competitive;
     const newCount = cards.filter(c => c.isNew).length;
-    // one "· N <tag> <label>" chunk per special tier that actually dropped
-    const tierBits = SPECIAL_TIERS
-      .map(t => ({ t, n: cards.filter(c => c.tier === t.id).length }))
-      .filter(x => x.n > 0)
-      .map(x => ' · ' + x.n + ' ' + x.t.tag + ' ' + x.t.label.toLowerCase());
     packState = null;
     packDone = true;    // next tap goes back to the start screen
-    packInfo.textContent = (competitive ? '�� ' : '�� ') + newCount + ' new' + tierBits.join('') + '  —  tap to return';
+    packInfo.textContent = (competitive ? '�� ' : '�� ') + newCount + ' new  —  tap to return';
     packInfo.style.opacity = 1;
   }
 
@@ -719,7 +672,6 @@
   function showStartScreen() {
     packEl.style.display = 'none';
     card.innerHTML = '';
-    applyTier(card, 'normal');
     meta.style.opacity = 0;
     badge.textContent = ''; badge.className = '';
     packInfo.style.opacity = 0;
@@ -729,15 +681,13 @@
   }
 
   function impact() {
-    const t = TIER_BY_ID[lastTier] || TIER_BY_ID.normal;
-    flash.animate([{ opacity: t.flash }, { opacity: 0 }],
-      { duration: t.flashMs, easing: 'ease-out' });
+    flash.animate([{ opacity: REVEAL.flash }, { opacity: 0 }],
+      { duration: REVEAL.flashMs, easing: 'ease-out' });
 
     shake();
-    burst(lastTier);
+    burst();
 
-    banner.textContent = tierWord(t);
-    banner.style.color = t.bannerColor;
+    banner.textContent = THEME.drawWord;
     banner.animate([
       { transform: 'translateX(-50%) scale(2.4)', opacity: 0 },
       { transform: 'translateX(-50%) scale(1)',   opacity: 1, offset: .22 },
@@ -761,10 +711,9 @@
     field.animate(frames, { duration: 480, easing: 'ease-out' });
   }
 
-  function burst(tier) {
-    const t = TIER_BY_ID[tier] || TIER_BY_ID.normal;
-    const chars = t.chars;
-    const count = t.particles;
+  function burst() {
+    const chars = REVEAL.chars;
+    const count = REVEAL.particles;
     for (let i = 0; i < count; i++) {
       const p = document.createElement('span');
       p.className = 'particle';

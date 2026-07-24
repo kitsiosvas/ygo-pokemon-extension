@@ -28,7 +28,7 @@ Each game splits into two collections/tracks:
 Handed a `ygo-duel-X.Y.Z.vsix`? Install it — no build, no source checkout:
 
 - **VS Code UI:** Extensions view → `⋯` menu → **Install from VSIX…** → pick the file.
-- **CLI:** `code --install-extension ygo-duel-0.1.0.vsix`
+- **CLI:** `code --install-extension ygo-duel-0.1.1.vsix`
 
 Then run **Developer: Reload Window**, open a Field from the Command Palette, and
 you're playing.
@@ -70,11 +70,9 @@ Every caught card also carries its **real-world rarity and market price**,
 pulled from the same APIs and shown on the card's popup in the Binder. For
 Yu-Gi-Oh, a card printed at several rarities is tracked as a *separate* binder
 entry per rarity (a Common and a Secret Rare "Dark Magician" each get their own
-slot); Pokémon cards are already per-printing at the source. This is separate
-from the ✨/�� draw-animation tiers, which are a random per-pull roll, not the
-card's actual rarity. The price also shows on the draw caption as a card is
-revealed, and the Binder header totals your whole collection's worth (price ×
-copies owned, for the shown track).
+slot); Pokémon cards are already per-printing at the source. The price also
+shows on the draw caption as a card is revealed, and the Binder header totals
+your whole collection's worth (price × copies owned, for the shown track).
 
 Cards caught *before* this feature existed have no rarity/price yet. Run
 **Cards: Backfill Rarity & Prices for Existing Cards** once to fetch it for your
@@ -82,34 +80,12 @@ whole collection (both games, both tracks). Safe to re-run: if the Pokémon API
 rate-limits and some cards come back "skipped", just run it again — it only
 retries what's left, until it reports "Nothing to backfill".
 
-### Competitive packs (optional)
+### Faster Pokémon draws
 
-Every merged PR you authored, on a repo this checks, earns one Competitive
-pack. Sandbox is untouched and always free — this is a separate, opt-in track:
-
-1. Defaults to plain github.com. If you're on an on-site GitHub Enterprise
-   Server instead, run **Cards: Set GitHub Server (Competitive Packs)** first
-   and enter its URL via "Custom URL…" — this updates `ygoDuel.github.apiBaseUrl`.
-   No on-site URL is hardcoded anywhere in this extension.
-2. Generate a personal access token with `repo` scope, at
-   `https://github.com/settings/tokens` for github.com or your on-site
-   server's `/settings/tokens` otherwise, then run **Cards: Set GitHub Token
-   (Competitive Packs)** and paste it.
-3. By default it counts every merged PR you authored on any repo the token
-   can see (GitHub's search `author:` qualifier does this in one query — no
-   repo list needed). Set `ygoDuel.trackedRepos` to a list of `"owner/repo"`
-   strings only if you want to scope it down to specific repos.
-4. It polls in the background (`ygoDuel.pollIntervalMinutes`, default 15, plus
-   on window focus) and shows a �� credit count in the status bar — click it,
-   or run **Cards: Check for Merged PRs**, to sync on demand.
-5. The *first* check for each person is a baseline, not a payout: your
-   existing merged PRs are marked seen but earn nothing, and you get a flat
-   3-pack welcome bonus instead — so nobody's whole PR history dumps into
-   their balance on day one. Only merges from that point on earn packs.
-   (**Cards: Reset Competitive Progress** wipes credits, merge history, the
-   baseline, AND every Competitive card collection, then re-baselines from
-   scratch — a clean slate for the whole Competitive side. Sandbox is
-   untouched.)
+Pokémon card art always loads the smaller/faster image for the draw animation
+and Binder grid; the Binder's zoomed popup still loads the full hi-res scan,
+since detail is actually visible there. Cards caught before this change keep
+whatever image they were caught with — nothing is backfilled retroactively.
 
 ## Architecture (high level)
 
@@ -203,10 +179,9 @@ cp "$SRC/media/pack-"*      "$DST/media/" 2>/dev/null   # if you changed a pack 
 folder with a directory junction pointing at this source, so edits are picked up
 directly and you only ever reload the window:
 
-```powershell
-# PowerShell (run as needed; adjust -Value if your checkout path differs)
-Remove-Item -Recurse -Force "$env:USERPROFILE\.vscode\extensions\ygo-duel" -ErrorAction SilentlyContinue
-cmd /c mklink /J "%USERPROFILE%\.vscode\extensions\ygo-duel" "%USERPROFILE%\Desktop\ygo-pokemon-extension"
+```bash
+rm -rf ~/.vscode/extensions/ygo-duel
+cmd //c mklink //J "%USERPROFILE%\.vscode\extensions\ygo-duel" "%USERPROFILE%\Desktop\ygo-duel"
 ```
 
 (Developing via **F5** / the Extension Development Host also loads this source
@@ -252,9 +227,7 @@ Umbrella note), not the code — leave the architecture alone.
 
 ## Ideas to extend
 
-- Pick the monster by file type (`.py` → a Spellcaster, `.js` → a Machine…)
 - "Attack points" combo meter that climbs as you type
-- Trap-card flip on a failing test, Spell-card flash on a passing one
 - Pokémon's `fetchBatch` usually only ends up sampling ONE random page (55
   cards) per refill, since that's almost always enough to hit `BUFFER_TARGET`
   — packs can feel same-set-y as a result. Fix: have `fetchBatch` pull a few

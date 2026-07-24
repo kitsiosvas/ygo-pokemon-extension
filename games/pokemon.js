@@ -75,7 +75,14 @@ function normalize(c) {
   return {
     id: c.id != null ? c.id : c.name,
     name: c.name,
-    image: images.large || images.small || null,
+    // "small" (~160KB) keeps the draw/pack reveal and Binder grid thumbnails
+    // fast — preload() blocks the reveal animation on a full download+decode,
+    // and "large" (~850KB hi-res scan) made that a multi-second stall.
+    // imageFull keeps the hi-res scan around for the Binder's zoomed popup,
+    // where the extra detail is actually visible and load time isn't in the
+    // way of an animation.
+    image: images.small || images.large || null,
+    imageFull: images.large || images.small || null,
     hp: c.hp ? Number(c.hp) : null,
     attr: (c.types && c.types[0]) || null,
     type: (c.subtypes && c.subtypes.join(' / ')) || null,
@@ -94,10 +101,8 @@ const theme = {
   toggleLabel: '⚡ Poké',
   fieldTitle: '⚡ Poké Field',
   binderTitle: '�� Pokédex',
-  // drawWord = the base-tier banner; revealNoun fills each rarer tier's
-  // wordTemplate (e.g. "✨ SHINY {noun}! ✨" → "✨ SHINY DRAW! ✨").
+  // drawWord = the reveal banner shown on every draw/pack card.
   drawWord: 'DRAW!',
-  revealNoun: 'DRAW',
   actionLabel: '⚡ Draw',
   itemPlural: 'Pokémon',
   imgHosts: 'https://images.pokemontcg.io',

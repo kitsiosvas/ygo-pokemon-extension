@@ -25,14 +25,12 @@
     border-radius: 8px; padding: 5px 10px;
   }
   .stat b { color: #ffe07a; }
-  /* let the per-tier chips sit in the header flex row with the same gap */
-  #tierStats { display: contents; }
   .spacer { flex: 1; }
   input#search {
     background: rgba(20,16,38,.9); border: 1px solid #4a3f82; color: #e6dcff;
     border-radius: 8px; padding: 7px 12px; font-size: 13px; width: 200px;
   }
-  /* sort dropdown — options come from the SORTS registry (see script) */
+   /* sort dropdown — options come from the SORTS registry (see script) */
   select#sortSelect {
     background: rgba(20,16,38,.9); border: 1px solid #4a3f82; color: #e6dcff;
     border-radius: 8px; padding: 7px 10px; font: 600 13px "Segoe UI", sans-serif;
@@ -97,7 +95,6 @@
   }
   .cell:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.5); }
   .cell { cursor: pointer; }
-  /* .cell.<tier> rarity borders are generated from TIERS — see injectTierStyles() */
   .thumb {
     aspect-ratio: 59/86; border-radius: 8px; overflow: hidden;
     background: radial-gradient(circle,#3a2f5c,#1c1733);
@@ -115,11 +112,6 @@
     background: rgba(12,10,24,.85); border: 1px solid #6b5fb0;
     border-radius: 999px; font-size: 11px; font-weight: 700;
     padding: 2px 8px; color: #cfc4ff;
-  }
-  /* rarity markers on a cell — one per owned special tier, offset by JS (left) */
-  .tiertag {
-    position: absolute; top: 12px; font-size: 14px;
-    filter: drop-shadow(0 0 4px rgba(255,255,255,.85));
   }
   #empty {
     text-align: center; color: #8a80b8; margin-top: 60px; font-size: 15px;
@@ -143,7 +135,6 @@
     transform: scale(.9) translateY(10px); transition: transform .18s ease;
   }
   #modalOverlay.show #modalCard { transform: scale(1) translateY(0); }
-  /* #modalCard.<tier> rarity glow is generated from TIERS — see injectTierStyles() */
   #modalClose {
     position: absolute; top: 10px; right: 10px; width: 30px; height: 30px;
     border-radius: 50%; border: 1px solid #5b4fa0; background: rgba(60,48,110,.8);
@@ -162,7 +153,6 @@
     background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.5) 48%, transparent 66%);
     background-size: 250% 250%; animation: mshimmer 3.2s linear infinite;
   }
-  /* #modalCard.<tier> .mholo sweeps are generated from TIERS — see injectTierStyles() */
   @keyframes mshimmer { to { background-position: -250% 0; } }
   .mname { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
   .mtype { font-size: 13px; color: #b9aef0; margin-bottom: 10px; }
@@ -187,7 +177,6 @@
     <span class="stat">Unique: <b id="sUnique">0</b></span>
     <span class="stat">Drawn: <b id="sTotal">0</b></span>
     <span class="stat">Value: <b id="sValue">$0.00</b></span>
-    <span id="tierStats"></span>
     <span class="spacer"></span>
     <select id="sortSelect" title="Sort binder cards" aria-label="Sort binder cards"></select>
     <input id="search" type="text" placeholder="Search…" autocomplete="off">
@@ -212,15 +201,9 @@
 
 <script>
   const THEME = {{THEME}};
-  const TIERS = {{TIERS}};
   // available games + which is active, for the in-panel switcher (mirrors duel.html)
   const GAMES = {{GAMES}};
   const ACTIVE_GAME = "{{ACTIVE_GAME}}";
-  // special (non-base) tiers, in rarest→common order — drives tags, chips, classes.
-  // Keys off `base` (mirroring the host's isSpecialTier) so a styled-but-tagless
-  // tier can't show up in the field but silently vanish here.
-  const SPECIAL_TIERS = TIERS.filter(t => !t.base);
-  const TIER_IDS = TIERS.map(t => t.id);
   const vscode = acquireVsCodeApi();
   const grid = document.getElementById('grid');
   const empty = document.getElementById('empty');
@@ -288,32 +271,11 @@
     esc(s.label) + '</option>'
   ).join('');
 
-  // which special tiers a collection entry has ever been pulled as
-  function ownedTiers(c) {
-    const counts = c.tierCounts || {};
-    return SPECIAL_TIERS.filter(t => (counts[t.id] || 0) > 0);
-  }
-
-  // Generate the per-tier cell/modal styling from the injected registry, so a
-  // tier's look lives only in extension.js (no hand-copied blocks per rarity).
-  (function injectTierStyles() {
-    const css = SPECIAL_TIERS.filter(t => t.style).map(t => {
-      const s = t.style;
-      return '.cell.' + t.id + ' { border-color: ' + s.accent + '; box-shadow: 0 0 18px ' + s.glow + '; }\n' +
-        '#modalCard.' + t.id + ' { border-color: ' + s.accent + '; ' +
-        'box-shadow: 0 30px 70px rgba(0,0,0,.7), 0 0 65px ' + s.glow + '; }\n' +
-        '#modalCard.' + t.id + ' .mholo { opacity: ' + s.holoOpacity + '; mix-blend-mode: ' + s.holoBlend + '; ' +
-        'background: ' + s.holo + '; background-size: 250% 250%; animation-duration: ' + s.holoSpeed + '; }';
-    }).join('\n');
-    const el = document.createElement('style');
-    el.textContent = css;
-    document.head.appendChild(el);
-  })();
-
   // apply theme text
   document.getElementById('title').textContent = THEME.binderTitle;
   drawBtn.textContent = THEME.actionLabel;
   search.placeholder = 'Search ' + THEME.itemPlural + '…';
+
 
   // reflect the active track in the toggle, the Draw/Pack buttons (Competitive
   // has no free single-draw — only credit-gated packs), and the empty state.
@@ -351,17 +313,11 @@
 
     shownCards = cards;
     grid.innerHTML = cards.map((c, i) => {
-      const owned = ownedTiers(c);
-      const cls = owned.map(t => t.id).join(' ');
-      const tags = owned
-        .map((t, j) => '<div class="tiertag" style="left:' + (12 + j * 22) + 'px">' + t.tag + '</div>')
-        .join('');
       const thumb = c.image
         ? '<img loading="lazy" src="' + c.image + '" alt="">'
         : (c.emoji || '��');
       return (
-        '<div class="cell' + (cls ? ' ' + cls : '') + '" data-idx="' + i + '">' +
-          tags +
+        '<div class="cell" data-idx="' + i + '">' +
           '<div class="count">×' + (c.count || 1) + '</div>' +
           '<div class="thumb">' + thumb + '</div>' +
           '<div class="cn">' + esc(c.name || '???') + (c.rarity ? ' (' + esc(c.rarity) + ')' : '') + '</div>' +
@@ -383,12 +339,9 @@
   const modalMeta    = document.getElementById('modalMeta');
 
   function openModal(c) {
-    const owned = ownedTiers(c);
-    modalCardEl.classList.remove(...TIER_IDS);
-    owned.forEach(t => modalCardEl.classList.add(t.id));
-
-    modalArt.innerHTML = c.image
-      ? '<img src="' + c.image + '" alt=""><div class="mholo"></div>'
+    const zoomArt = c.imageFull || c.image;
+    modalArt.innerHTML = zoomArt
+      ? '<img src="' + zoomArt + '" alt=""><div class="mholo"></div>'
       : (c.emoji || '��') + '<div class="mholo"></div>';
 
     modalName.textContent = c.name || '???';
@@ -406,7 +359,6 @@
     const seen = c.firstSeen ? new Date(c.firstSeen).toLocaleDateString() : null;
     modalMeta.textContent =
       'Owned ×' + (c.count || 1) +
-      owned.map(t => '  ·  ' + t.tag + ' ' + c.tierCounts[t.id] + ' ' + t.label.toLowerCase()).join('') +
       (seen ? '  ·  First caught ' + seen : '') +
       (c.rarity ? '  ·  ' + c.rarity : '') +
       (c.price != null ? '  ·  $' + c.price.toFixed(2) : '');
@@ -433,16 +385,11 @@
     track = m.track === 'competitive' ? 'competitive' : 'sandbox';
     credits = m.credits || 0;
     allCards = m.cards || [];
-    const counts = (m.stats && m.stats.tierCounts) || {};
     document.getElementById('sUnique').textContent = allCards.length;
     document.getElementById('sTotal').textContent = (m.stats && m.stats.total) || 0;
     // collection worth: each card's price × copies owned
     const value = allCards.reduce((s, c) => s + (c.price || 0) * (c.count || 1), 0);
     document.getElementById('sValue').textContent = '$' + value.toFixed(2);
-    // one chip per special tier, built from the registry so new tiers auto-appear
-    document.getElementById('tierStats').innerHTML = SPECIAL_TIERS
-      .map(t => '<span class="stat">' + t.tag + ' ' + t.label + ': <b>' + (counts[t.id] || 0) + '</b></span>')
-      .join(' ');
     updateTrackUI();
     render();
   });
