@@ -86,9 +86,9 @@ function power(c) {
 
 const theme = {
   ns: 'ygoDuel',
-  toggleLabel: '�� YGO',
-  fieldTitle: '�� Duel Field',
-  binderTitle: '�� Card Binder',
+  toggleLabel: '⚔️ YGO',
+  fieldTitle: '⚔️ Duel Field',
+  binderTitle: '📖 Card Binder',
   // action words shown in banners / buttons / empty states.
   // drawWord = the reveal banner shown on every draw/pack card.
   drawWord: 'DRAW!',
@@ -97,7 +97,7 @@ const theme = {
   // CSP img-src hosts the webviews are allowed to load art from
   imgHosts: 'https://images.ygoprodeck.com https://storage.googleapis.com',
   // attribute → icon, used on the fallback (emoji) card
-  attrIcons: { DARK: '��', LIGHT: '☀️', EARTH: '⛰️', WATER: '��', FIRE: '��', WIND: '��️', DIVINE: '✴️' },
+  attrIcons: { DARK: '🌑', LIGHT: '☀️', EARTH: '⛰️', WATER: '💧', FIRE: '🔥', WIND: '🌬️', DIVINE: '✴️' },
   attrKey: 'attr',
   // stat rows rendered under a card (order matters); each reads card[key]
   stats: [ { key: 'atk', label: 'ATK' }, { key: 'def', label: 'DEF' } ],

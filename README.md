@@ -1,4 +1,4 @@
-# �� YGO Duel Mode
+# ⚔️ YGO Duel Mode
 
 *It's time to d-d-d-duel!* A personal, for-fun VS Code extension that plays a
 **card draw animation** in a side panel — card rises from below, spins in
@@ -15,7 +15,7 @@ Competitive credit is spent.
 
 Each game splits into two collections/tracks:
 - **Sandbox** — the original, always-free draw/pack flow. Unlimited, no setup.
-- **Competitive ��** — packs earned only by merging your own PRs on GitHub (see
+- **Competitive 🏆** — packs earned only by merging your own PRs on GitHub (see
   "Competitive packs" below). Its own separate collection, so grinding it never
   touches your Sandbox binder.
 
@@ -49,8 +49,8 @@ prices" below.
    - **Cards: Draw a Card!** — draw a random card in the active game (Sandbox)
    - **Cards: Open a Pack** — rip a free 5-card Sandbox booster
    - **Cards: Open Binder** — open the collection grid for the active game/track
-   - **Cards: Toggle Draw-on-Save** — draw on every file save ��
-   - **Cards: Open Competitive Pack ��** — spend one merge-earned credit on a
+   - **Cards: Toggle Draw-on-Save** — draw on every file save ⚔️
+   - **Cards: Open Competitive Pack 🏆** — spend one merge-earned credit on a
      5-card Competitive booster (disabled/no-ops at 0 credits)
    - **Cards: Set GitHub Server (Competitive Packs)** — switch between
      github.com and an on-site GitHub Enterprise Server, see below

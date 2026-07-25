@@ -81,7 +81,7 @@ async function promptForToken(context) {
   if (!token) return false;
   await context.secrets.store(TOKEN_KEY, token.trim());
   await context.globalState.update(LOGIN_KEY, undefined); // force a fresh /user lookup on next check
-  vscode.window.showInformationMessage('�� GitHub token saved. Run "Cards: Check for Merged PRs" to sync.');
+  vscode.window.showInformationMessage('✅ GitHub token saved. Run "Cards: Check for Merged PRs" to sync.');
   return true;
 }
 
@@ -123,7 +123,7 @@ async function promptForServer(context) {
   await cfg().update('github.apiBaseUrl', url, vscode.ConfigurationTarget.Global);
   await context.globalState.update(LOGIN_KEY, undefined);
   vscode.window.showInformationMessage(
-    `�� GitHub server set to ${url}. If your saved token is for the other server, run "Cards: Set GitHub Token" to update it.`
+    `✅ GitHub server set to ${url}. If your saved token is for the other server, run "Cards: Set GitHub Token" to update it.`
   );
   return true;
 }

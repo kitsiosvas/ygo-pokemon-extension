@@ -168,11 +168,11 @@
 </head>
 <body>
   <header>
-    <h1 id="title">�� Card Binder</h1>
+    <h1 id="title">📖 Card Binder</h1>
     <div id="gameToggle"></div>
     <div id="trackToggle">
-      <button class="seg on" data-track="sandbox">�� Sandbox</button>
-      <button class="seg" data-track="competitive">�� Competitive</button>
+      <button class="seg on" data-track="sandbox">🧪 Sandbox</button>
+      <button class="seg" data-track="competitive">🏆 Competitive</button>
     </div>
     <span class="stat">Unique: <b id="sUnique">0</b></span>
     <span class="stat">Drawn: <b id="sTotal">0</b></span>
@@ -181,7 +181,7 @@
     <select id="sortSelect" title="Sort binder cards" aria-label="Sort binder cards"></select>
     <input id="search" type="text" placeholder="Search…" autocomplete="off">
     <button class="primary" id="drawBtn">⚔️ Draw</button>
-    <button id="packBtn">�� Open Pack</button>
+    <button id="packBtn">📦 Open Pack</button>
     <button class="danger" id="resetBtn">Reset</button>
   </header>
   <div id="grid"></div>
@@ -284,16 +284,16 @@
     drawBtn.style.display = track === 'competitive' ? 'none' : '';
     resetBtn.textContent = 'Reset ' + (track === 'competitive' ? 'Competitive' : 'Sandbox');
     if (track === 'competitive') {
-      packBtn.textContent = '�� Open Competitive Pack' + (credits > 0 ? ' (' + credits + ')' : '');
+      packBtn.textContent = '🏆 Open Competitive Pack' + (credits > 0 ? ' (' + credits + ')' : '');
       packBtn.disabled = credits <= 0;
       packBtn.title = credits > 0 ? '' : 'Merge a PR to earn one';
     } else {
-      packBtn.textContent = '�� Open Pack';
+      packBtn.textContent = '📦 Open Pack';
       packBtn.disabled = false;
       packBtn.title = '';
     }
     empty.innerHTML = track === 'competitive'
-      ? '�� No Competitive cards yet.<br>Merge a PR to earn your first pack!'
+      ? '🏆 No Competitive cards yet.<br>Merge a PR to earn your first pack!'
       : 'No ' + THEME.itemPlural + ' yet.<br>Open some and they\'ll appear here! ⚔️';
   }
 
@@ -315,7 +315,7 @@
     grid.innerHTML = cards.map((c, i) => {
       const thumb = c.image
         ? '<img loading="lazy" src="' + c.image + '" alt="">'
-        : (c.emoji || '��');
+        : (c.emoji || '🃏');
       return (
         '<div class="cell" data-idx="' + i + '">' +
           '<div class="count">×' + (c.count || 1) + '</div>' +
@@ -342,7 +342,7 @@
     const zoomArt = c.imageFull || c.image;
     modalArt.innerHTML = zoomArt
       ? '<img src="' + zoomArt + '" alt=""><div class="mholo"></div>'
-      : (c.emoji || '��') + '<div class="mholo"></div>';
+      : (c.emoji || '🃏') + '<div class="mholo"></div>';
 
     modalName.textContent = c.name || '???';
 

@@ -100,7 +100,7 @@ const theme = {
   ns: 'ygoDuel',
   toggleLabel: '⚡ Poké',
   fieldTitle: '⚡ Poké Field',
-  binderTitle: '�� Pokédex',
+  binderTitle: '📖 Pokédex',
   // drawWord = the reveal banner shown on every draw/pack card.
   drawWord: 'DRAW!',
   actionLabel: '⚡ Draw',
@@ -108,8 +108,8 @@ const theme = {
   imgHosts: 'https://images.pokemontcg.io',
   // Pokémon energy type → icon, used on the fallback (emoji) card
   attrIcons: {
-    Fire: '��', Water: '��', Grass: '��', Lightning: '⚡', Psychic: '��',
-    Fighting: '��', Darkness: '��', Metal: '⚙️', Fairy: '��', Dragon: '��', Colorless: '⭐'
+    Fire: '🔥', Water: '💧', Grass: '🌿', Lightning: '⚡', Psychic: '🔮',
+    Fighting: '👊', Darkness: '🌑', Metal: '⚙️', Fairy: '🧚', Dragon: '🐉', Colorless: '⭐'
   },
   attrKey: 'attr',
   stats: [ { key: 'hp', label: 'HP' } ],

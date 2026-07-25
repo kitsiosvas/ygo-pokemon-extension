@@ -285,8 +285,8 @@
     <div id="particles"></div>
     <div id="gameToggle"></div>
     <div id="stats"></div>
-    <div id="binderBtn">�� Binder</div>
-    <div id="packBtn">�� Pack</div>
+    <div id="binderBtn">📖 Binder</div>
+    <div id="packBtn">📦 Pack</div>
     <div id="compBtn"></div>
     <div id="packInfo"></div>
     <div id="hint"></div>
@@ -301,7 +301,7 @@
   const ACTIVE_GAME = "{{ACTIVE_GAME}}";
   // One fixed reveal look for every card — no per-rarity variation. Rarity and
   // price are surfaced as text (in the meta line and the binder), not as tiers.
-  const REVEAL = { chars: ['⭐','✨','��','��','��'], particles: 40, flash: 0.85, flashMs: 420 };
+  const REVEAL = { chars: ['⭐','✨','💫','🌟','💥'], particles: 40, flash: 0.85, flashMs: 420 };
 
   const field    = document.getElementById('field');
   field.style.setProperty('--pack-ar', THEME.packAspectRatio || '657 / 1181');
@@ -407,7 +407,7 @@
 
   function updateCompBtn() {
     const disabled = credits <= 0;
-    compBtn.textContent = '�� Competitive' + (credits > 0 ? ' (' + credits + ')' : '');
+    compBtn.textContent = '🏆 Competitive' + (credits > 0 ? ' (' + credits + ')' : '');
     compBtn.classList.toggle('disabled', disabled);
     compBtn.title = disabled
       ? 'Merge a PR to earn a Competitive pack'
@@ -431,7 +431,7 @@
         '<div class="fallback">' +
           '<div class="fname">' + esc(c.name) + '  ' + icon + '</div>' +
           '<div class="fstars">' + stars + '</div>' +
-          '<div class="fart">' + (c.emoji || '��') + '</div>' +
+          '<div class="fart">' + (c.emoji || '🃏') + '</div>' +
           '<div class="ftype">[ ' + esc(c.type || '') + ' ]</div>' +
           '<div class="fstat">' + fstat + '</div>' +
         '</div>' +
@@ -588,7 +588,7 @@
 
     awaitingRip = true;
     packInfo.style.opacity = 1;
-    packInfo.textContent = (packState.competitive ? '�� Tap to rip open your Competitive pack!' : '�� Tap to rip open the pack!');
+    packInfo.textContent = (packState.competitive ? '🏆 Tap to rip open your Competitive pack!' : '📦 Tap to rip open the pack!');
   }
 
   // tear the wrapper apart, then start revealing the cards
@@ -639,7 +639,7 @@
     }
     if (packState.index >= packState.cards.length) { finishPack(); return; }
     const c = packState.cards[packState.index];
-    const prefix = packState.competitive ? '�� ' : '';
+    const prefix = packState.competitive ? '🏆 ' : '';
     packState.index++;
     draw(c, prefix + 'Card ' + packState.index + ' / ' + packState.cards.length);
   }
@@ -650,7 +650,7 @@
     const newCount = cards.filter(c => c.isNew).length;
     packState = null;
     packDone = true;    // next tap goes back to the start screen
-    packInfo.textContent = (competitive ? '�� ' : '�� ') + newCount + ' new  —  tap to return';
+    packInfo.textContent = (competitive ? '🏆 ' : '📦 ') + newCount + ' new  —  tap to return';
     packInfo.style.opacity = 1;
   }
 
@@ -761,7 +761,7 @@
 
   function updateStats(c) {
     if (c.unique == null) return;
-    stats.textContent = '�� ' + c.unique + ' unique  ·  ' + c.total + ' drawn';
+    stats.textContent = '🃏 ' + c.unique + ' unique  ·  ' + c.total + ' drawn';
   }
 
   const vscode = acquireVsCodeApi();

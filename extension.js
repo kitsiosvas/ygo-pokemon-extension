@@ -137,7 +137,7 @@ function activate(context) {
       // trips to GitHub — settling any in-flight poll, then re-checking merges
       // — so show a spinner instead of leaving the command looking hung.
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: '�� Resetting Competitive progress…' },
+        { location: vscode.ProgressLocation.Notification, title: '🔄 Resetting Competitive progress…' },
         async () => {
           // let any in-flight poll (e.g. the one activation fires) fully settle
           // first — it captured baselined/credited from before this reset, so
@@ -153,15 +153,15 @@ function activate(context) {
 
     vscode.commands.registerCommand('ygoDuel.migrateCardData', async () => {
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: '�� Backfilling rarity & prices…' },
+        { location: vscode.ProgressLocation.Notification, title: '🔄 Backfilling rarity & prices…' },
         async progress => {
           const { migrated, skipped } = await migrateCardData((m, s) => {
             progress.report({ message: m + ' done' + (s ? ' · ' + s + ' skipped' : '') });
           });
           vscode.window.showInformationMessage(
             migrated || skipped
-              ? `�� Backfilled ${migrated} card${migrated === 1 ? '' : 's'}` + (skipped ? ` · ${skipped} skipped` : '') + '.'
-              : '�� Nothing to backfill — already up to date.'
+              ? `✅ Backfilled ${migrated} card${migrated === 1 ? '' : 's'}` + (skipped ? ` · ${skipped} skipped` : '') + '.'
+              : '✅ Nothing to backfill — already up to date.'
           );
           if (binderPanel) sendCollection(binderTrack);
         }
@@ -177,7 +177,7 @@ function activate(context) {
       const next = !cfg.get('drawOnSave');
       await cfg.update('drawOnSave', next, vscode.ConfigurationTarget.Global);
       vscode.window.showInformationMessage(
-        next ? "�� Draw-on-Save: ON — it's time to d-d-d-duel!" : 'Draw-on-Save: OFF'
+        next ? "⚔️ Draw-on-Save: ON — it's time to d-d-d-duel!" : 'Draw-on-Save: OFF'
       );
     }),
 
@@ -291,7 +291,7 @@ function sendCredits() {
 function updateStatusBar() {
   if (!statusBarItem) return;
   const n = github.getCredits(extCtx);
-  statusBarItem.text = '�� ' + n;
+  statusBarItem.text = '🏆 ' + n;
   statusBarItem.tooltip = (n > 0
     ? n + ' Competitive pack' + (n > 1 ? 's' : '') + ' available'
     : 'No Competitive packs yet') + ' — click to check for new merges';
@@ -332,12 +332,12 @@ async function pollMerges() {
 function toastMergeResult(result) {
   if (result.baseline) {
     vscode.window.showInformationMessage(
-      `�� Welcome to Competitive! ${result.newCredits} starter pack${result.newCredits > 1 ? 's' : ''} on the house — ` +
+      `🎉 Welcome to Competitive! ${result.newCredits} starter pack${result.newCredits > 1 ? 's' : ''} on the house — ` +
       `your existing merged PRs are now the baseline, so only new merges earn packs from here. (${result.totalCredits} available)`
     );
   } else {
     vscode.window.showInformationMessage(
-      `�� +${result.newCredits} Competitive pack${result.newCredits > 1 ? 's' : ''} earned! (${result.totalCredits} available)`
+      `🏆 +${result.newCredits} Competitive pack${result.newCredits > 1 ? 's' : ''} earned! (${result.totalCredits} available)`
     );
   }
 }
@@ -353,7 +353,7 @@ async function checkMergesAndToast() {
     );
     if (pick === 'Set Token') await vscode.commands.executeCommand('ygoDuel.setGithubToken');
   } else if (result.status === 'error') {
-    vscode.window.showErrorMessage('�� Merge check failed: ' + result.error);
+    vscode.window.showErrorMessage('❌ Merge check failed: ' + result.error);
   } else if (result.newCredits > 0) {
     toastMergeResult(result);
   } else {
@@ -400,7 +400,7 @@ let ripBeforeReady = false; // player tore the wrapper open before the fetch fin
 async function doPack(track = 'sandbox') {
   const competitive = track === 'competitive';
   if (competitive && github.getCredits(extCtx) <= 0) {
-    vscode.window.showInformationMessage('�� No Competitive packs available yet — merge a PR to earn one!');
+    vscode.window.showInformationMessage('🔒 No Competitive packs available yet — merge a PR to earn one!');
     return;
   }
   pendingPack = null;     // abandon any prior unopened pack (UI guards against this, but be safe)
@@ -705,7 +705,7 @@ async function resetCollection(track) {
   await extCtx.globalState.update(collectionKey(track), {});
   await extCtx.globalState.update(statsKey(track), emptyStats());
   sendCollection(track);
-  vscode.window.showInformationMessage(`��️ ${label} collection reset.`);
+  vscode.window.showInformationMessage(`🗑️ ${label} collection reset.`);
 }
 
 /** Wipe the Competitive collection + stats for EVERY game — used by the
