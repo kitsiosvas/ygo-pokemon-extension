@@ -231,6 +231,9 @@ Umbrella note), not the code — leave the architecture alone.
 
 ## Ideas to extend
 
+- Binder is not currently shared between Cursor and VSCODE. 
+  The binder uses context.GlobalState, and Cursor and VS Code maintain separate global state.
+  The safest shared design is storing binder data in a common file such as: C:\Users\User\.ygo-duel\binder.json
 - "Attack points" combo meter that climbs as you type
 - Pokémon's `fetchBatch` usually only ends up sampling ONE random page (55
   cards) per refill, since that's almost always enough to hit `BUFFER_TARGET`
