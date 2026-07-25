@@ -149,13 +149,17 @@ run **Developer: Reload Window**.
 **Option A — PowerShell sync (Windows, recommended).** From this repo root:
 
 ```powershell
-.\sync-to-vscode.ps1
+.\sync-to-vscode.ps1                 # VS Code + Cursor (default)
+.\sync-to-vscode.ps1 -Target vscode  # VS Code only
+.\sync-to-vscode.ps1 -Target cursor  # Cursor only
 # preview only:  .\sync-to-vscode.ps1 -WhatIf
 ```
 
 Copies `extension.js`, `github.js`, `http.js`, `package.json`, `games\*.js`,
 `media\duel.html`, `media\binder.html`, and any `media\pack-*` art into
-`%USERPROFILE%\.vscode\extensions\ygo-duel\`. Then run **Developer: Reload
+`%USERPROFILE%\.vscode\extensions\ygo-duel\` and/or
+`%USERPROFILE%\.cursor\extensions\ygo-duel\`. First Cursor sync also registers
+the extension in Cursor’s `extensions.json`. Then run **Developer: Reload
 Window**.
 
 **Option A2 — manual sync (bash).** Same file set, hand-copied:
