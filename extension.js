@@ -82,6 +82,35 @@ function setActiveGame(id) {
   sendCollection(binderTrack);
 }
 
+class DuelMenuItem extends vscode.TreeItem {
+  constructor(label, commandId, iconId, tooltip) {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.command = { command: commandId, title: label };
+    this.iconPath = new vscode.ThemeIcon(iconId);
+    this.tooltip = tooltip || label;
+  }
+}
+
+class DuelMenuProvider {
+  constructor() {
+    this._onDidChangeTreeData = new vscode.EventEmitter();
+    this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+  }
+  getTreeItem(el) { return el; }
+  getChildren() {
+    return [
+      new DuelMenuItem('Open Yu-Gi-Oh Field',     'ygoDuel.openYugioh',          'symbol-misc',    'Open the Yu-Gi-Oh duel field'),
+      new DuelMenuItem('Open Pokémon Field',       'ygoDuel.openPokemon',         'symbol-misc',    'Open the Pokémon duel field'),
+      new DuelMenuItem('Draw a Card',              'ygoDuel.draw',                'arrow-right',    'Draw a random card'),
+      new DuelMenuItem('Open a Pack',              'ygoDuel.openPack',            'package',        'Open a free booster pack'),
+      new DuelMenuItem('Open Competitive Pack',    'ygoDuel.openCompetitivePack', 'star',           'Open a Competitive pack (requires merge credits)'),
+      new DuelMenuItem('Open Binder',              'ygoDuel.openBinder',          'book',           'View your full card collection'),
+      new DuelMenuItem('Check for Merged PRs',     'ygoDuel.checkMerges',         'github',         'Check GitHub for newly merged PRs'),
+
+    ];
+  }
+}
+
 function activate(context) {
   extCtx = context;
   const savedGame = context.globalState.get(ACTIVE_GAME_KEY);
@@ -89,6 +118,10 @@ function activate(context) {
   game = GAMES[gameId];
   sanitizeCollections(); // repair any collections a past cross-game race corrupted
   loadBufferCache(); // warm-start from last session so a reload doesn't hit the network cold
+
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider('ygoDuelMenu', new DuelMenuProvider())
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('ygoDuel.open', () => ensurePanel(context)),
@@ -172,20 +205,6 @@ function activate(context) {
 
     vscode.commands.registerCommand('ygoDuel.resetCollection', () => resetCollection(binderTrack)),
 
-    vscode.commands.registerCommand('ygoDuel.toggleOnSave', async () => {
-      const cfg = vscode.workspace.getConfiguration('ygoDuel');
-      const next = !cfg.get('drawOnSave');
-      await cfg.update('drawOnSave', next, vscode.ConfigurationTarget.Global);
-      vscode.window.showInformationMessage(
-        next ? "⚔️ Draw-on-Save: ON — it's time to d-d-d-duel!" : 'Draw-on-Save: OFF'
-      );
-    }),
-
-    vscode.workspace.onDidSaveTextDocument(async () => {
-      if (!vscode.workspace.getConfiguration('ygoDuel').get('drawOnSave')) return;
-      ensurePanel(context);
-      await doDraw();
-    }),
 
     vscode.window.onDidChangeWindowState(state => {
       // the real-world trigger is "merged a PR on GitHub, tabbed back into VS Code"

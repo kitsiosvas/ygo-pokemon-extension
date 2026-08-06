@@ -1,4 +1,8 @@
 .claude/**
 .vscode/**
+.venv/**
 .gitignore
 *.vsix
+fix-activity-icon-cache.py
+build-vsix.ps1
+sync-to-vscode.ps1

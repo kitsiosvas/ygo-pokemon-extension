@@ -49,7 +49,6 @@ prices" below.
    - **Cards: Draw a Card!** — draw a random card in the active game (Sandbox)
    - **Cards: Open a Pack** — rip a free 5-card Sandbox booster
    - **Cards: Open Binder** — open the collection grid for the active game/track
-   - **Cards: Toggle Draw-on-Save** — draw on every file save ⚔️
    - **Cards: Open Competitive Pack 🏆** — spend one merge-earned credit on a
      5-card Competitive booster (disabled/no-ops at 0 credits)
    - **Cards: Set GitHub Server (Competitive Packs)** — switch between
@@ -156,8 +155,8 @@ run **Developer: Reload Window**.
 ```
 
 Copies `extension.js`, `github.js`, `http.js`, `package.json`, `games\*.js`,
-`media\duel.html`, `media\binder.html`, and any `media\pack-*` art into
-`%USERPROFILE%\.vscode\extensions\ygo-duel\` and/or
+`media\duel.html`, `media\binder.html`, `media\icon.svg`, and any
+`media\pack-*` art into `%USERPROFILE%\.vscode\extensions\ygo-duel\` and/or
 `%USERPROFILE%\.cursor\extensions\ygo-duel\`. First Cursor sync also registers
 the extension in Cursor’s `extensions.json`. Then run **Developer: Reload
 Window**.
@@ -175,6 +174,7 @@ cp "$SRC/games/"*.js        "$DST/games/"
 cp "$SRC/package.json"      "$DST/package.json"
 cp "$SRC/media/duel.html"   "$DST/media/duel.html"
 cp "$SRC/media/binder.html" "$DST/media/binder.html"
+cp "$SRC/media/icon.svg"    "$DST/media/icon.svg"
 cp "$SRC/media/pack-"*      "$DST/media/" 2>/dev/null   # if you changed a pack image
 # then: Command Palette → "Developer: Reload Window"
 ```
