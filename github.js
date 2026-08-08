@@ -91,7 +91,7 @@ async function promptForToken(context) {
   if (!token) return false;
   await context.secrets.store(TOKEN_KEY, token.trim());
   await context.globalState.update(LOGIN_KEY, undefined); // force a fresh /user lookup on next check
-  vscode.window.showInformationMessage('✅ GitHub token saved. Run "Cards: Check for Merged PRs" to sync.');
+  vscode.window.showInformationMessage('✅ GitHub token saved. Run "Cards: Check for Competitive Activity" to sync.');
   return true;
 }
 

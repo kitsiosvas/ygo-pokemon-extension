@@ -105,7 +105,7 @@ class DuelMenuProvider {
       new DuelMenuItem('Open a Pack',              'ygoDuel.openPack',            'package',        'Open a free booster pack'),
       new DuelMenuItem('Open Competitive Pack',    'ygoDuel.openCompetitivePack', 'star',           'Open a Competitive pack (requires earned credits)'),
       new DuelMenuItem('Open Binder',              'ygoDuel.openBinder',          'book',           'View your full card collection'),
-      new DuelMenuItem('Check for Merged PRs',     'ygoDuel.checkMerges',         'github',         'Check GitHub for new merges and direct-to-main commits'),
+      new DuelMenuItem('Check for Competitive Activity', 'ygoDuel.checkMerges',   'github',         'Check GitHub for new merges and direct-to-main commits'),
 
     ];
   }
@@ -361,7 +361,7 @@ function toastMergeResult(result) {
   }
 }
 
-/** Manual "Cards: Check for Merged PRs" — always says something, even if it
+/** Manual "Cards: Check for Competitive Activity" — always says something, even if it
  *  ends up piggybacking on an already-in-flight background poll, since the
  *  user explicitly asked for feedback right now. */
 async function checkMergesAndToast() {

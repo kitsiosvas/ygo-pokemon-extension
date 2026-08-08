@@ -56,8 +56,8 @@ prices" below.
    - **Cards: Set GitHub Server (Competitive Packs)** — switch between
      github.com and an on-site GitHub Enterprise Server, see below
    - **Cards: Set GitHub Token (Competitive Packs)** — one-time setup, see below
-   - **Cards: Check for Merged PRs** — manually sync PRs + direct commits now
-     instead of waiting for the background poll
+   - **Cards: Check for Competitive Activity** — manually sync PRs + direct
+     commits now instead of waiting for the background poll
    - **Cards: Reset Collection (active game + track)** — wipe the shown
      collection for the active game; the other track/game is untouched
 
