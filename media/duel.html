@@ -212,7 +212,7 @@
     border: 1px solid #a8791f; border-radius: 8px;
     padding: 5px 10px; cursor: pointer; user-select: none;
   }
-  /* Competitive pack button, right of Pack — only earned by merging PRs */
+  /* Competitive pack button, right of Pack — earned by merges / direct commits */
   #compBtn {
     position: absolute; top: 8px; left: 172px; z-index: 9;
     font: 600 clamp(10px,2vw,13px) "Segoe UI", sans-serif;
@@ -410,7 +410,7 @@
     compBtn.textContent = '🏆 Competitive' + (credits > 0 ? ' (' + credits + ')' : '');
     compBtn.classList.toggle('disabled', disabled);
     compBtn.title = disabled
-      ? 'Merge a PR to earn a Competitive pack'
+      ? 'Merge a PR or push to main to earn a Competitive pack'
       : credits + ' pack' + (credits > 1 ? 's' : '') + ' available';
   }
   updateCompBtn();

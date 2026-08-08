@@ -286,14 +286,14 @@
     if (track === 'competitive') {
       packBtn.textContent = '🏆 Open Competitive Pack' + (credits > 0 ? ' (' + credits + ')' : '');
       packBtn.disabled = credits <= 0;
-      packBtn.title = credits > 0 ? '' : 'Merge a PR to earn one';
+      packBtn.title = credits > 0 ? '' : 'Merge a PR or push to main to earn one';
     } else {
       packBtn.textContent = '📦 Open Pack';
       packBtn.disabled = false;
       packBtn.title = '';
     }
     empty.innerHTML = track === 'competitive'
-      ? '🏆 No Competitive cards yet.<br>Merge a PR to earn your first pack!'
+      ? '🏆 No Competitive cards yet.<br>Merge a PR or push to main to earn your first pack!'
       : 'No ' + THEME.itemPlural + ' yet.<br>Open some and they\'ll appear here! ⚔️';
   }
 

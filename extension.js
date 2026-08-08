@@ -103,9 +103,9 @@ class DuelMenuProvider {
       new DuelMenuItem('Open Pokémon Field',       'ygoDuel.openPokemon',         'symbol-misc',    'Open the Pokémon duel field'),
       new DuelMenuItem('Draw a Card',              'ygoDuel.draw',                'arrow-right',    'Draw a random card'),
       new DuelMenuItem('Open a Pack',              'ygoDuel.openPack',            'package',        'Open a free booster pack'),
-      new DuelMenuItem('Open Competitive Pack',    'ygoDuel.openCompetitivePack', 'star',           'Open a Competitive pack (requires merge credits)'),
+      new DuelMenuItem('Open Competitive Pack',    'ygoDuel.openCompetitivePack', 'star',           'Open a Competitive pack (requires earned credits)'),
       new DuelMenuItem('Open Binder',              'ygoDuel.openBinder',          'book',           'View your full card collection'),
-      new DuelMenuItem('Check for Merged PRs',     'ygoDuel.checkMerges',         'github',         'Check GitHub for newly merged PRs'),
+      new DuelMenuItem('Check for Merged PRs',     'ygoDuel.checkMerges',         'github',         'Check GitHub for new merges and direct-to-main commits'),
 
     ];
   }
@@ -158,7 +158,7 @@ function activate(context) {
 
     vscode.commands.registerCommand('ygoDuel.resetCompetitiveProgress', async () => {
       const choice = await vscode.window.showWarningMessage(
-        'Reset ALL Competitive progress? This wipes your pack-credit balance, merge ' +
+        'Reset ALL Competitive progress? This wipes your pack-credit balance, PR/commit ' +
         'history, and every Competitive card collection (all games), then re-baselines ' +
         '(existing merges won\'t count) and grants a fresh welcome bonus. ' +
         'Your Sandbox collections are untouched. This cannot be undone.',
@@ -207,7 +207,7 @@ function activate(context) {
 
 
     vscode.window.onDidChangeWindowState(state => {
-      // the real-world trigger is "merged a PR on GitHub, tabbed back into VS Code"
+      // the real-world trigger is "shipped on GitHub, tabbed back into VS Code"
       if (!state.focused || Date.now() - lastPollAt < FOCUS_POLL_MIN_GAP_MS) return;
       backgroundCheckMerges();
     })
@@ -313,7 +313,7 @@ function updateStatusBar() {
   statusBarItem.text = '🏆 ' + n;
   statusBarItem.tooltip = (n > 0
     ? n + ' Competitive pack' + (n > 1 ? 's' : '') + ' available'
-    : 'No Competitive packs yet') + ' — click to check for new merges';
+    : 'No Competitive packs yet') + ' — click to check for new PRs / direct commits';
 }
 
 /** The one place that talks to GitHub, tags on where credits landed, and
@@ -346,13 +346,13 @@ async function pollMerges() {
 }
 
 /** Celebrate a poll result that found something — a first-ever baseline
- *  (welcome bonus, historical merges don't count) reads differently from an
- *  ordinary "you merged something new" credit. Shared by both callers below. */
+ *  (welcome bonus, historical activity doesn't count) reads differently from an
+ *  ordinary "you shipped something new" credit. Shared by both callers below. */
 function toastMergeResult(result) {
   if (result.baseline) {
     vscode.window.showInformationMessage(
       `🎉 Welcome to Competitive! ${result.newCredits} starter pack${result.newCredits > 1 ? 's' : ''} on the house — ` +
-      `your existing merged PRs are now the baseline, so only new merges earn packs from here. (${result.totalCredits} available)`
+      `existing PRs/commits are baselined; new merges and direct-to-main commits earn packs by size. (${result.totalCredits} available)`
     );
   } else {
     vscode.window.showInformationMessage(
@@ -372,11 +372,11 @@ async function checkMergesAndToast() {
     );
     if (pick === 'Set Token') await vscode.commands.executeCommand('ygoDuel.setGithubToken');
   } else if (result.status === 'error') {
-    vscode.window.showErrorMessage('❌ Merge check failed: ' + result.error);
+    vscode.window.showErrorMessage('❌ Competitive check failed: ' + result.error);
   } else if (result.newCredits > 0) {
     toastMergeResult(result);
   } else {
-    vscode.window.showInformationMessage(`No new merges yet. (${result.totalCredits} available)`);
+    vscode.window.showInformationMessage(`No new PRs or direct commits yet. (${result.totalCredits} available)`);
   }
 }
 
@@ -419,7 +419,7 @@ let ripBeforeReady = false; // player tore the wrapper open before the fetch fin
 async function doPack(track = 'sandbox') {
   const competitive = track === 'competitive';
   if (competitive && github.getCredits(extCtx) <= 0) {
-    vscode.window.showInformationMessage('🔒 No Competitive packs available yet — merge a PR to earn one!');
+    vscode.window.showInformationMessage('🔒 No Competitive packs available yet — merge a PR or push to main to earn one!');
     return;
   }
   pendingPack = null;     // abandon any prior unopened pack (UI guards against this, but be safe)

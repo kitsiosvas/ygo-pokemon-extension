@@ -15,9 +15,11 @@ Competitive credit is spent.
 
 Each game splits into two collections/tracks:
 - **Sandbox** — the original, always-free draw/pack flow. Unlimited, no setup.
-- **Competitive 🏆** — packs earned only by merging your own PRs on GitHub (see
-  "Competitive packs" below). Its own separate collection, so grinding it never
-  touches your Sandbox binder.
+- **Competitive 🏆** — packs earned by merging your own PRs **or** pushing
+  straight to a repo's default branch on GitHub. Size (additions + deletions)
+  awards **1 / 2 / 3** packs for **&lt;20 / 20–199 / 200+** lines. Commits that
+  landed via a PR are skipped so a merge never pays twice. Separate collection
+  from Sandbox.
 
 > Personal project — not published, not distributed. Yu-Gi-Oh art is property of
 > Konami; Pokémon art is property of Nintendo / The Pokémon Company. This tool
@@ -49,13 +51,13 @@ prices" below.
    - **Cards: Draw a Card!** — draw a random card in the active game (Sandbox)
    - **Cards: Open a Pack** — rip a free 5-card Sandbox booster
    - **Cards: Open Binder** — open the collection grid for the active game/track
-   - **Cards: Open Competitive Pack 🏆** — spend one merge-earned credit on a
+   - **Cards: Open Competitive Pack 🏆** — spend one earned credit on a
      5-card Competitive booster (disabled/no-ops at 0 credits)
    - **Cards: Set GitHub Server (Competitive Packs)** — switch between
      github.com and an on-site GitHub Enterprise Server, see below
    - **Cards: Set GitHub Token (Competitive Packs)** — one-time setup, see below
-   - **Cards: Check for Merged PRs** — manually sync now instead of waiting for
-     the background poll
+   - **Cards: Check for Merged PRs** — manually sync PRs + direct commits now
+     instead of waiting for the background poll
    - **Cards: Reset Collection (active game + track)** — wipe the shown
      collection for the active game; the other track/game is untouched
 
@@ -92,7 +94,7 @@ whatever image they were caught with — nothing is backfilled retroactively.
 |------|------|
 | `package.json` | Extension manifest — commands + `ygoDuel.drawOnSave` setting (static; VS Code reads this at load) |
 | `extension.js` | **Host logic.** Holds the `GAMES` registry + active-game switching, manages the two webview panels, runs the prefetch buffer, persists per-game collections (Sandbox + Competitive tracks). Game-agnostic. |
-| `github.js` | **Competitive packs' data layer.** PAT storage (SecretStorage), polls the GitHub Search API for merged PRs you authored (globally by default, or scoped to `ygoDuel.trackedRepos`), tracks the pack-credit balance. Never shows UI — `extension.js` owns all toasts. |
+| `github.js` | **Competitive packs' data layer.** PAT storage (SecretStorage), polls GitHub for merged PRs you authored and direct default-branch commits (skipping PR-linked SHAs so merges aren't double-counted), awards 1–3 credits by lines changed, tracks the pack-credit balance. Never shows UI — `extension.js` owns all toasts. |
 | `http.js` | Tiny shared HTTPS JSON fetch helper used by both game adapters; forces https so card fetches work behind a TLS-inspecting proxy. |
 | `games/yugioh.js`, `games/pokemon.js` | **The game definitions** — the *only* places a game is hardcoded. Each exports a data adapter (`fetchOne`/`keep`/`normalize`/`power`) + a `theme` object (titles, words, stat rows, attr icons, image hosts, pack wordmark). |
 | `media/duel.html` | The Field — draw/pack CSS+JS animation, sandboxed in a webview. Theme-driven. |

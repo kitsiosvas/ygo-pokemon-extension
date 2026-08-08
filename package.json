@@ -111,16 +111,10 @@
           "default": "https://api.github.com",
           "description": "GitHub REST API base URL for Competitive packs. Defaults to plain github.com; use \"Cards: Set GitHub Server (Competitive Packs)\" to switch to an on-site GitHub Enterprise Server instead of editing this by hand."
         },
-        "ygoDuel.trackedRepos": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": [],
-          "description": "Optional \"owner/repo\" allowlist for Competitive packs. Leave empty (default) to count merged PRs you authored across every repo the token can see."
-        },
         "ygoDuel.pollIntervalMinutes": {
           "type": "number",
           "default": 15,
-          "description": "How often to poll GitHub in the background for newly-merged PRs."
+          "description": "How often to poll GitHub in the background for newly-merged PRs and direct-to-main commits."
         }
       }
     }
