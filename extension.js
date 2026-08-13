@@ -579,16 +579,19 @@ function sanitizeCollections() {
 }
 
 /** One-time (idempotent), network-backed backfill: cards caught before
- *  rarity/price existed have neither field. For each such entry, re-fetch
- *  that exact card by id and re-run it through the game's own normalize() —
- *  for Yu-Gi-Oh, where normalize() now bakes the picked rarity into the id,
- *  this moves the entry onto its new key, merging into a same-rarity entry
- *  already there (count/firstSeen/lastSeen combined) rather than
- *  overwriting it. Pokémon's id is already per-printing, so it never moves —
- *  this just fills in rarity/price in place. Fetches sequentially (not in
- *  parallel) to stay easy on both APIs, and skips past any single card's
- *  fetch failure (deleted card, network blip) rather than aborting the run.
- *  Safe to re-run: a second pass finds nothing left with no `rarity` key.
+ *  rarity/price existed may be missing either field. Pending = no `rarity`
+ *  key on the entry, or `price == null`. For each, re-fetch by id and run
+ *  through the game's normalize():
+ *    - needsRarity: full migration. Yu-Gi-Oh may move the entry to a new
+ *      key (normalize() bakes rarity into id), merging into an existing
+ *      same-rarity slot; Pokémon's id is already per-printing, so it just
+ *      fills rarity/price in place on the same key.
+ *    - else: price-only patch — writes fresh.price onto the existing entry
+ *      in place so YGO's baked-in rarity isn't re-rolled.
+ *  Fetches sequentially (not in parallel) to stay easy on both APIs, skips
+ *  past any single card's fetch failure rather than aborting the run, and is
+ *  safe to re-run (nothing left once every entry has a `rarity` key and a
+ *  price, except cards the API still can't price — those stay skipped).
  *
  *  Paced with a delay between requests, plus one retry after a longer
  *  backoff on failure: pokemontcg.io's keyless tier throttles hard under
@@ -605,9 +608,12 @@ async function migrateCardData(onProgress) {
     for (const track of ['sandbox', 'competitive']) {
       const key = collectionKey(track, gid);
       const snapshot = extCtx.globalState.get(key, {});
-      const pending = Object.keys(snapshot).filter(id => !('rarity' in snapshot[id]));
+      const pending = Object.keys(snapshot).filter(id =>
+        !('rarity' in snapshot[id]) || snapshot[id].price == null
+      );
       if (!pending.length) continue;
       for (const id of pending) {
+        const needsRarity = !('rarity' in snapshot[id]);
         await sleep(300);
         let fresh;
         try {
@@ -631,18 +637,38 @@ async function migrateCardData(onProgress) {
         // race window to ~zero, instead of the whole migration's duration.
         const col = extCtx.globalState.get(key, {});
         const entry = col[id];
-        if (!entry || 'rarity' in entry) {
-          if (onProgress) onProgress(migrated, skipped); // already handled (concurrent run) or drawn/reset away
-          continue;
+        if (!entry) {
+          if (onProgress) onProgress(migrated, skipped);
+          continue; // drawn/reset away
         }
-        delete col[id];
-        const target = col[fresh.id];
-        if (target) {
-          target.count += entry.count || 0;
-          target.firstSeen = Math.min(target.firstSeen || Infinity, entry.firstSeen || Infinity);
-          target.lastSeen = Math.max(target.lastSeen || 0, entry.lastSeen || 0);
+        if (needsRarity) {
+          // Full migration: ID may change (YGO encodes rarity into it), use merge logic.
+          if ('rarity' in entry) {
+            if (onProgress) onProgress(migrated, skipped); // already handled by a concurrent run
+            continue;
+          }
+          delete col[id];
+          const target = col[fresh.id];
+          if (target) {
+            target.count += entry.count || 0;
+            target.firstSeen = Math.min(target.firstSeen || Infinity, entry.firstSeen || Infinity);
+            target.lastSeen = Math.max(target.lastSeen || 0, entry.lastSeen || 0);
+          } else {
+            col[fresh.id] = { ...entry, ...fresh }; // fresh display/rarity/price/id win; entry's bookkeeping survives
+          }
         } else {
-          col[fresh.id] = { ...entry, ...fresh }; // fresh display/rarity/price/id win; entry's bookkeeping survives
+          // Price-only patch: just update the price field in place. Avoids
+          // re-randomising the rarity that YGO bakes into the card ID.
+          if (entry.price != null) {
+            if (onProgress) onProgress(migrated, skipped); // already handled by a concurrent run
+            continue;
+          }
+          if (fresh.price == null) {
+            skipped++; // API still has no price for this card
+            if (onProgress) onProgress(migrated, skipped);
+            continue;
+          }
+          entry.price = fresh.price;
         }
         extCtx.globalState.update(key, col);
         migrated++;
@@ -764,7 +790,7 @@ function cardBelongsToGame(card, g = game) {
 
 /** Load whatever was left in the active game's buffer at the end of last session.
  *  Drops any wrong-game cards a past switch-race may have left in this file, plus
- *  any old-schema cards from a pre-rarity/price build (no `rarity` key — a fresh
+ *  any old-schema cards from a pre-rarity build (no `rarity` key — a fresh
  *  card legitimately with no rarity still has the key set to null, so it's kept).
  *  Both self-heal on reload: dropped cards are just re-fetched with the current
  *  normalize() instead of being served/recorded stale. */
@@ -809,11 +835,11 @@ function persistBufferSoon() {
 }
 
 /** Fetch a batch of raw cards; add any kept ones (deduped by name) to the
- *  buffer. Prefers the adapter's `fetchBatch(count)` (ONE request for many
- *  cards) when it has one — this matters for rate-limited APIs like
- *  pokemontcg.io, where firing `count` parallel single-card requests triggers
- *  429s and starves the buffer. Falls back to a parallel `fetchOne` burst for
- *  adapters with a fast random endpoint (e.g. Yu-Gi-Oh's randomcard.php).
+ *  buffer. Prefers the adapter's `fetchBatch()` when present — each game
+ *  chooses its own batching (e.g. pokemontcg.io fans out a few parallel page
+ *  fetches for catalog variety; Yu-Gi-Oh has no batch hook and falls back to
+ *  parallel `fetchOne()` bursts against randomcard.php). Either way we avoid
+ *  firing `count` parallel single-card lookups at rate-limited APIs.
  *
  *  We deliberately do NOT download the art here. The webview loads each image
  *  URL directly from the CDN (allowed by the CSP) and its own preload() waits

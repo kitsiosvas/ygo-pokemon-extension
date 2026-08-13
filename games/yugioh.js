@@ -22,6 +22,13 @@ const { getJson } = require('../http');
 const api = 'https://db.ygoprodeck.com/api/v7/randomcard.php';
 const CARDINFO_API = 'https://db.ygoprodeck.com/api/v7/cardinfo.php';
 
+// EUR→USD rate for cardmarket_price conversion. Fetched once at module load;
+// falls back to 1.10 if the request fails.
+let eurUsd = 1.10;
+getJson('https://api.frankfurter.app/latest?from=EUR&to=USD', {})
+  .then(json => { const r = json && json.rates && json.rates.USD; if (r > 0) eurUsd = r; })
+  .catch(() => {});
+
 async function fetchOne() {
   const json = await getJson(api);
   const c = json && Array.isArray(json.data) ? json.data[0] : json;
@@ -55,9 +62,16 @@ function normalize(c) {
   const printing = sets.length ? sets[Math.floor(Math.random() * sets.length)] : null;
   // Real-world price: any single market blanks out per card (e.g. a new set has
   // no TCGplayer listing yet), so take the first market that lists a price.
+  // Display currency is USD. cardmarket_price is EUR and converted via the
+  // cached rate; the rest are already USD.
   const p = (c.card_prices && c.card_prices[0]) || {};
-  const price = ['cardmarket_price', 'tcgplayer_price', 'ebay_price', 'amazon_price', 'coolstuffinc_price']
-    .map(k => Number(p[k])).find(v => v > 0) || null;
+  const price = [
+    Number(p.cardmarket_price) * eurUsd,
+    Number(p.tcgplayer_price),
+    Number(p.ebay_price),
+    Number(p.amazon_price),
+    Number(p.coolstuffinc_price)
+  ].find(v => v > 0) || null;
   const rarity = (printing && printing.set_rarity) || null;
   const baseId = c.id != null ? c.id : c.name;
 
