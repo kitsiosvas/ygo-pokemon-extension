@@ -2,7 +2,7 @@
   "name": "ygo-duel",
   "displayName": "YGO Duel Mode",
   "description": "It's time to d-d-d-duel! Real trading-card draw animations inside VS Code.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "local",
   "private": true,
   "engines": {
