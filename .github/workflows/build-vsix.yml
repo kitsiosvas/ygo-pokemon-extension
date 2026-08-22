@@ -1,4 +1,5 @@
-# Build a .vsix whenever package.json's version bumps on main.
+# Build a .vsix whenever package.json's version bumps on main,
+# then commit it into releases/ so every published build lives in the repo.
 # Also runnable manually via "Run workflow" (workflow_dispatch).
 
 name: Build VSIX
@@ -23,6 +24,8 @@ jobs:
         with:
           # Need the previous commit to compare package.json versions.
           fetch-depth: 2
+          # Bot commits must be able to push back to the same branch.
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Detect version change
         id: version
@@ -68,20 +71,27 @@ jobs:
         if: steps.version.outputs.changed == 'true'
         run: npx --yes @vscode/vsce package --allow-missing-repository
 
-      - name: Upload VSIX artifact
+      - name: Commit VSIX to releases/
         if: steps.version.outputs.changed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ygo-duel-${{ steps.version.outputs.version }}
-          path: ygo-duel-${{ steps.version.outputs.version }}.vsix
-          if-no-files-found: error
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          VSIX="ygo-duel-${VERSION}.vsix"
+          DEST="releases/${VSIX}"
 
-      - name: Create GitHub Release
-        if: steps.version.outputs.changed == 'true' && github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: YGO Duel Mode v${{ steps.version.outputs.version }}
-          files: ygo-duel-${{ steps.version.outputs.version }}.vsix
-          generate_release_notes: true
-          fail_on_unmatched_files: true
+          test -f "${VSIX}"
+          mkdir -p releases
+          mv -f "${VSIX}" "${DEST}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -- "${DEST}"
+          if git diff --cached --quiet; then
+            echo "${DEST} is already up to date — nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "Add ${DEST}"
+          # Path filter is package.json only, so this push does not re-trigger the workflow.
+          git push origin "HEAD:${{ github.ref_name }}"

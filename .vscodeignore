@@ -2,6 +2,7 @@
 .vscode/**
 .venv/**
 .github/**
+releases/**
 .gitignore
 *.vsix
 fix-activity-icon-cache.py
