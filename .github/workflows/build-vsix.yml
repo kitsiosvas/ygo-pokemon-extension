@@ -1,0 +1,87 @@
+# Build a .vsix whenever package.json's version bumps on main.
+# Also runnable manually via "Run workflow" (workflow_dispatch).
+
+name: Build VSIX
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-vsix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need the previous commit to compare package.json versions.
+          fetch-depth: 2
+
+      - name: Detect version change
+        id: version
+        run: |
+          set -euo pipefail
+          NEW_VERSION="$(node -p "require('./package.json').version")"
+          echo "version=${NEW_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Current version: ${NEW_VERSION}"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            echo "Manual run — building VSIX."
+            exit 0
+          fi
+
+          if ! git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            echo "No previous commit — building VSIX."
+            exit 0
+          fi
+
+          OLD_VERSION="$(
+            git show HEAD^:package.json \
+              | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).version))"
+          )"
+          echo "Previous version: ${OLD_VERSION}"
+
+          if [ "${OLD_VERSION}" != "${NEW_VERSION}" ]; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            echo "Version bumped ${OLD_VERSION} → ${NEW_VERSION} — building VSIX."
+          else
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            echo "package.json changed but version is still ${NEW_VERSION} — skipping VSIX build."
+          fi
+
+      - name: Setup Node.js
+        if: steps.version.outputs.changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Package VSIX
+        if: steps.version.outputs.changed == 'true'
+        run: npx --yes @vscode/vsce package --allow-missing-repository
+
+      - name: Upload VSIX artifact
+        if: steps.version.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ygo-duel-${{ steps.version.outputs.version }}
+          path: ygo-duel-${{ steps.version.outputs.version }}.vsix
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.changed == 'true' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: YGO Duel Mode v${{ steps.version.outputs.version }}
+          files: ygo-duel-${{ steps.version.outputs.version }}.vsix
+          generate_release_notes: true
+          fail_on_unmatched_files: true

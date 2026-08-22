@@ -1,6 +1,7 @@
 .claude/**
 .vscode/**
 .venv/**
+.github/**
 .gitignore
 *.vsix
 fix-activity-icon-cache.py
