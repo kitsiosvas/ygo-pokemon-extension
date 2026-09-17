@@ -5,6 +5,7 @@
 releases/**
 .gitignore
 *.vsix
+packs.test.js
 fix-activity-icon-cache.py
 build-vsix.ps1
 sync-to-vscode.ps1

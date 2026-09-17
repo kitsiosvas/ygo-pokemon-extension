@@ -196,32 +196,34 @@
     box-shadow: 0 0 12px rgba(255,170,40,.5);
   }
 
-  /* Binder button, top-left */
+  /* Top-left actions — flex so the bulk Open N button can appear without hardcoded offsets */
+  #topLeft {
+    position: absolute; top: 8px; left: 12px; z-index: 17;
+    display: flex; flex-wrap: wrap; gap: 6px; max-width: 58%;
+    align-items: center;
+  }
+  #binderBtn, #packBtn, #compBtn, #compAllBtn {
+    font: 600 clamp(10px,2vw,13px) "Segoe UI", sans-serif;
+    border-radius: 8px;
+    padding: 5px 10px; cursor: pointer; user-select: none;
+    white-space: nowrap; border: 1px solid;
+  }
   #binderBtn {
-    position: absolute; top: 8px; left: 12px; z-index: 9;
-    font: 600 clamp(10px,2vw,13px) "Segoe UI", sans-serif;
-    color: #d8d2f0; background: rgba(40,32,70,.75);
-    border: 1px solid #5b4fa0; border-radius: 8px;
-    padding: 5px 10px; cursor: pointer; user-select: none;
+    color: #d8d2f0; background: rgba(40,32,70,.75); border-color: #5b4fa0;
   }
-  #binderBtn:hover, #packBtn:hover { background: rgba(70,56,120,.9); }
+  #binderBtn:hover { background: rgba(70,56,120,.9); }
   #packBtn {
-    position: absolute; top: 8px; left: 92px; z-index: 9;
-    font: 600 clamp(10px,2vw,13px) "Segoe UI", sans-serif;
-    color: #ffe6a8; background: rgba(70,50,20,.75);
-    border: 1px solid #a8791f; border-radius: 8px;
-    padding: 5px 10px; cursor: pointer; user-select: none;
+    color: #ffe6a8; background: rgba(70,50,20,.75); border-color: #a8791f;
   }
-  /* Competitive pack button, right of Pack — earned by merges / direct commits */
-  #compBtn {
-    position: absolute; top: 8px; left: 172px; z-index: 9;
-    font: 600 clamp(10px,2vw,13px) "Segoe UI", sans-serif;
-    color: #ffe680; background: rgba(80,60,10,.75);
-    border: 1px solid #c99a2f; border-radius: 8px;
-    padding: 5px 10px; cursor: pointer; user-select: none; white-space: nowrap;
+  #packBtn:hover:not(.disabled) { background: rgba(110,80,24,.9); }
+  #compBtn, #compAllBtn {
+    color: #ffe680; background: rgba(80,60,10,.75); border-color: #c99a2f;
   }
-  #compBtn:hover:not(.disabled) { background: rgba(120,90,20,.9); }
-  #compBtn.disabled { opacity: .45; cursor: default; }
+  #compBtn:hover:not(.disabled), #compAllBtn:hover:not(.disabled) {
+    background: rgba(120,90,20,.9);
+  }
+  #compBtn.disabled, #compAllBtn.disabled, #packBtn.disabled { opacity: .45; cursor: default; }
+  #compAllBtn { display: none; }
 
   /* Gold treatment for a Competitive pack's reveal — same animation, just a
      trophy-tinted card frame so it reads as the "real" grind. */
@@ -232,7 +234,7 @@
 
   /* pack progress: "Card 2 / 5" top-center */
   #packInfo {
-    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
     z-index: 9; font: 700 clamp(11px,2.3vw,15px) "Trebuchet MS", sans-serif;
     color: #ffe07a; letter-spacing: 1px; opacity: 0;
     text-shadow: 0 1px 6px #000;
@@ -269,7 +271,141 @@
   }
   .pack-top    { clip-path: inset(0 0 50% 0 round 14px 14px 0 0); }   /* top 50% slice */
   .pack-bottom { clip-path: inset(49% 0 0 0 round 0 0 14px 14px); }   /* bottom 51% (1% overlap) */
-</style>
+
+  /* Bulk-open results — Binder-style cells (name + price, click to inspect) */
+  #packResults {
+    display: none;
+    position: absolute; inset: 0; z-index: 32;
+    flex-direction: column; gap: 14px;
+    background: #0c0918;
+    overflow: auto;
+    padding: 52px 16px 28px;
+    user-select: text; -webkit-user-select: text;
+  }
+  #packResults.show { display: flex; }
+  .results-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+    position: sticky; top: 0; z-index: 1;
+    background: linear-gradient(#0c0918, rgba(12,9,24,.92) 70%, transparent);
+    padding: 4px 0 10px;
+  }
+  .results-title {
+    font: 800 clamp(16px,3.4vw,22px) "Trebuchet MS", sans-serif;
+    color: #ffe07a; letter-spacing: .5px;
+  }
+  .results-sub { font: 600 13px "Segoe UI", sans-serif; color: #b9aef0; margin-top: 2px; }
+  #resultsDone {
+    font: 700 13px "Segoe UI", sans-serif;
+    color: #1a1030; background: linear-gradient(135deg,#ffcf3f,#ff8a00);
+    border: none; border-radius: 8px; padding: 7px 14px; cursor: pointer;
+  }
+  #resultsDone:hover { filter: brightness(1.08); }
+  .results-pack { display: flex; flex-direction: column; gap: 6px; }
+  .results-pack-label {
+    font: 700 11px "Segoe UI", sans-serif; color: #8a80b8;
+    letter-spacing: 1px; text-transform: uppercase;
+  }
+  .results-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 16px;
+  }
+  .r-card {
+    position: relative; background: rgba(30,24,54,.6);
+    border: 1px solid #3a3068; border-radius: 12px; padding: 8px;
+    cursor: pointer;
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .r-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+  .r-card:focus { outline: 2px solid #ffcf3f; outline-offset: 2px; }
+  .r-card.new { border-color: #ffcf3f; box-shadow: 0 0 12px rgba(255,180,40,.45); }
+  .r-thumb {
+    position: relative; aspect-ratio: 59/86; border-radius: 8px; overflow: hidden;
+    background: radial-gradient(circle,#3a2f5c,#1c1733);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 48px;
+  }
+  .r-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .r-fallback {
+    padding: 6px; text-align: center;
+    font: 600 12px/1.2 "Segoe UI", sans-serif; color: #e6dcff;
+  }
+  .r-name {
+    font-size: 12px; font-weight: 600; margin-top: 7px; line-height: 1.2;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; min-height: 29px;
+    user-select: text; -webkit-user-select: text; cursor: text;
+  }
+  .r-price {
+    margin-top: 4px; font-size: 12px; font-weight: 700; color: #ffe07a;
+    user-select: text; -webkit-user-select: text; cursor: text;
+  }
+  .r-price.none { color: #8a80b8; font-weight: 600; }
+  .r-new {
+    position: absolute; top: 6px; left: 6px;
+    font: 800 9px "Trebuchet MS", sans-serif;
+    background: linear-gradient(135deg,#ffcf3f,#ff7a00); color: #3a1c00;
+    padding: 2px 6px; border-radius: 999px;
+  }
+
+  /* Inspect popup — same layout as the Binder enlarge modal.
+     Lives on <body> (not #field) so Field's user-select:none and click-to-draw
+     cannot swallow drags, text selection, or the close button. */
+  #bulkModal {
+    position: fixed; inset: 0; background: rgba(6,4,14,.82);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity .18s ease, visibility .18s ease;
+    user-select: text; -webkit-user-select: text;
+  }
+  #bulkModal.show { opacity: 1; visibility: visible; pointer-events: auto; }
+  #bulkModalCard {
+    position: relative; width: min(360px, 86vw); max-height: 88vh;
+    background: linear-gradient(160deg, #241c40, #14101f);
+    border: 1px solid #4a3f82; border-radius: 16px;
+    padding: 20px; overflow-y: auto;
+    box-shadow: 0 30px 70px rgba(0,0,0,.7);
+    transform: scale(.9) translateY(10px); transition: transform .18s ease;
+    pointer-events: auto; cursor: auto;
+    user-select: text; -webkit-user-select: text;
+  }
+  #bulkModal.show #bulkModalCard { transform: scale(1) translateY(0); }
+  #bulkModalClose {
+    position: absolute; top: 10px; right: 10px; width: 30px; height: 30px;
+    border-radius: 50%; border: 1px solid #5b4fa0; background: rgba(60,48,110,.8);
+    color: #e6dcff; font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
+    z-index: 2; pointer-events: auto;
+  }
+  #bulkModalClose:hover { background: rgba(84,66,150,.95); }
+  .menlarge {
+    position: relative; aspect-ratio: 59/86; border-radius: 12px; overflow: hidden;
+    background: radial-gradient(circle,#3a2f5c,#1c1733);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 90px; margin-bottom: 14px;
+  }
+  .menlarge img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .menlarge .mholo {
+    position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen; opacity: .55;
+    background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.5) 48%, transparent 66%);
+    background-size: 250% 250%; animation: mshimmer 3.2s linear infinite;
+  }
+  @keyframes mshimmer { to { background-position: -250% 0; } }
+  .mname, .mtype, .mdesc, .mmeta, .mprice, .mstats {
+    user-select: text; -webkit-user-select: text; cursor: text;
+  }
+  .mname { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .mtype { font-size: 13px; color: #b9aef0; margin-bottom: 10px; }
+  .mstats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .mstats span {
+    font-size: 12px; background: rgba(50,40,90,.5); border: 1px solid #453a7a;
+    border-radius: 8px; padding: 4px 9px;
+  }
+  .mstats span b { color: #ffe07a; }
+  .mdesc { font-size: 12.5px; line-height: 1.5; color: #cfc4ff; margin-bottom: 10px; white-space: pre-wrap; }
+  .mmeta { font-size: 12px; color: #8a80b8; }
+  .mprice { font-size: 16px; font-weight: 800; color: #ffe07a; margin: 8px 0 10px; }
+  .mprice.none { color: #8a80b8; font-weight: 600; font-size: 13px; }</style>
 </head>
 <body>
   <div id="field">
@@ -285,11 +421,27 @@
     <div id="particles"></div>
     <div id="gameToggle"></div>
     <div id="stats"></div>
-    <div id="binderBtn">📖 Binder</div>
-    <div id="packBtn">📦 Pack</div>
-    <div id="compBtn"></div>
+    <div id="topLeft">
+      <div id="binderBtn">📖 Binder</div>
+      <div id="packBtn">📦 Pack</div>
+      <div id="compBtn"></div>
+      <button type="button" id="compAllBtn">Open 20</button>
+    </div>
     <div id="packInfo"></div>
     <div id="hint"></div>
+    <div id="packResults"></div>
+  </div>
+  <div id="bulkModal">
+    <div id="bulkModalCard">
+      <button type="button" id="bulkModalClose" title="Close">✕</button>
+      <div class="menlarge" id="bulkModalArt"></div>
+      <div class="mname" id="bulkModalName"></div>
+      <div class="mtype" id="bulkModalType"></div>
+      <div class="mstats" id="bulkModalStats"></div>
+      <div class="mprice" id="bulkModalPrice"></div>
+      <div class="mdesc" id="bulkModalDesc"></div>
+      <div class="mmeta" id="bulkModalMeta"></div>
+    </div>
   </div>
 
 <script>
@@ -299,6 +451,7 @@
   // available games + which is active, for the in-panel switcher
   const GAMES = {{GAMES}};
   const ACTIVE_GAME = "{{ACTIVE_GAME}}";
+  const MAX_BULK_PACKS = {{MAX_BULK_PACKS}};
   // One fixed reveal look for every card — no per-rarity variation. Rarity and
   // price are surfaced as text (in the meta line and the binder), not as tiers.
   const REVEAL = { chars: ['⭐','✨','💫','🌟','💥'], particles: 40, flash: 0.85, flashMs: 420 };
@@ -321,9 +474,14 @@
   const binderBtn= document.getElementById('binderBtn');
   const packBtn  = document.getElementById('packBtn');
   const compBtn  = document.getElementById('compBtn');
+  const compAllBtn = document.getElementById('compAllBtn');
   const packInfo = document.getElementById('packInfo');
   const packEl   = document.getElementById('pack');
+  const packResults = document.getElementById('packResults');
+  const bulkModal = document.getElementById('bulkModal');
+  const bulkModalCard = document.getElementById('bulkModalCard');
   const gameToggle = document.getElementById('gameToggle');
+  let bulkShownCards = []; // cards currently in the bulk results grid, indexed for the inspect popup
 
   // A full booster pack drawn as SVG (crisp at any size, no external assets).
   // Rendered once per half; each half's overflow+clip reveals its own slice.
@@ -400,18 +558,47 @@
 
   let idleAnim = null;
   let animating = false;
-  let packState = null;   // { cards, index, waiting, competitive } while opening a pack
+  let packState = null;   // play: { mode, cards, index, waiting, competitive, autoReveal }
+                          // bulk: { mode, competitive, packCount, packs }
   let awaitingRip = false; // pack wrapper is showing, waiting for the rip
   let packDone = false;    // a pack just finished; next tap returns to start
   let credits = 0;         // Competitive pack credits available, from the host
+  let openingRequested = false; // locked the instant we send openPacks, before packSession arrives
+
+  // The pending settle for the card currently rising (set by draw()). A new
+  // session or a fetch failure cancels it, so neither the 1400ms backstop
+  // timer nor a late onfinish from the previous card can run onCardSettled
+  // against state that no longer belongs to that card.
+  let pendingSettle = null; // { timer, cancel }
+  function cancelPendingSettle() {
+    if (!pendingSettle) return;
+    clearTimeout(pendingSettle.timer);
+    pendingSettle.cancel(); // marks it settled so a late onfinish is a no-op too
+    pendingSettle = null;
+  }
+
+  function packBusy() {
+    return openingRequested || animating || awaitingRip || !!packState;
+  }
 
   function updateCompBtn() {
-    const disabled = credits <= 0;
+    const busy = packBusy();
+    packBtn.classList.toggle('disabled', busy);
+    const noCredit = credits <= 0;
     compBtn.textContent = '🏆 Competitive' + (credits > 0 ? ' (' + credits + ')' : '');
-    compBtn.classList.toggle('disabled', disabled);
-    compBtn.title = disabled
+    compBtn.classList.toggle('disabled', busy || noCredit);
+    compBtn.title = noCredit
       ? 'Merge a PR or push to main to earn a Competitive pack'
-      : credits + ' pack' + (credits > 1 ? 's' : '') + ' available';
+      : credits + ' pack' + (credits > 1 ? 's' : '') + ' available — click to open one';
+    const burst = Math.min(credits, MAX_BULK_PACKS);
+    const showBurst = burst > 1;
+    compAllBtn.style.display = showBurst ? 'inline-block' : 'none';
+    compAllBtn.textContent = 'Open ' + burst;
+    compAllBtn.classList.toggle('disabled', busy || burst <= 1);
+    compAllBtn.title = credits > burst
+      ? 'Open ' + burst + ' of ' + credits + ' Competitive packs (max per burst). ' +
+        (credits - burst) + ' remain.'
+      : 'Open ' + burst + ' Competitive packs';
   }
   updateCompBtn();
 
@@ -502,9 +689,13 @@
     // — field tap, pack buttons — is gated on `animating`, so a missed onfinish
     // would wedge the whole panel. The timeout is the safety net.
     let settled = false;
-    const settle = () => { if (settled) return; settled = true; startIdle(); onCardSettled(); };
+    const settle = () => { if (settled) return; settled = true; pendingSettle = null; startIdle(); onCardSettled(); };
+    cancelPendingSettle(); // a previous card still rising is superseded by this one
     rise.onfinish = settle;
-    setTimeout(settle, 1400); // > rise duration; a no-op if onfinish already ran
+    pendingSettle = {
+      timer: setTimeout(settle, 1400), // > rise duration; a no-op if onfinish already ran
+      cancel: () => { settled = true; }
+    };
 
     setTimeout(impact, 660);
   }
@@ -514,6 +705,9 @@
   async function restoreCard(c) {
     if (animating || packState || awaitingRip || packDone) return;
     await preload(c.imageData || c.image);
+    // a session can start during that preload (the host replays an in-flight
+    // pack right after 'ready') — don't paint over its wrapper
+    if (animating || packState || awaitingRip || packDone) return;
     render(c);
     updateStats(c);
     hint.style.display = 'none';
@@ -526,7 +720,8 @@
   // called once a card has fully risen into place
   function onCardSettled() {
     animating = false;
-    if (!packState) return;
+    // no cards yet = a fresh session whose fetch hasn't landed; nothing to advance
+    if (!packState || packState.mode === 'bulk' || !packState.cards) return;
     if (packState.index < packState.cards.length) {
       packInfo.textContent = 'Card ' + packState.index + ' / ' +
         packState.cards.length + '   —   tap to reveal next ▶';
@@ -544,25 +739,63 @@
     }
   }
 
-  // wrapper arrives first (cards still being fetched)
-  function beginPack(competitive) {
-    // start every pack from a clean slate: cancel any lingering reveal
+  // host started a pack session (play = 1 pack with wrapper; bulk = N packs)
+  function beginSession(m) {
+    openingRequested = false;
+    hidePackResults();
+    // start every session from a clean slate: cancel any lingering reveal
     // animations and clear the transient interaction flags, so a stuck state
     // from a previous pack can never carry over into this one.
     [cardWrap, ring, glow, banner, meta].forEach(el => el.getAnimations().forEach(a => a.cancel()));
+    cancelPendingSettle();
     if (idleAnim) { idleAnim.cancel(); idleAnim = null; }
     animating = false;
     awaitingRip = false;
     packDone = false;
-    packState = { cards: null, index: 0, waiting: false, competitive: !!competitive };
-    document.body.classList.toggle('competitive-pack', !!competitive);
-    showPackWrapper();
+    packState = {
+      mode: m.mode === 'bulk' ? 'bulk' : 'play',
+      cards: null,
+      packs: null,
+      index: 0,
+      waiting: false,
+      competitive: !!m.competitive,
+      autoReveal: !!m.autoReveal,
+      packCount: m.packCount || 1
+    };
+    document.body.classList.toggle('competitive-pack', !!m.competitive);
+    if (packState.mode === 'bulk') showBulkOpening();
+    else showPackWrapper();
+    updateCompBtn();
   }
 
-  // cards finished fetching; start revealing if the player already ripped
-  function onPackCards(cards) {
-    if (!packState) return;         // pack was dismissed before cards arrived
-    packState.cards = cards;
+  function onSessionProgress(m) {
+    if (!packState || packState.mode !== 'bulk') return;
+    const fetched = m.fetched || 0;
+    const total = m.total || (packState.packCount * 5);
+    packInfo.textContent = 'Fetching cards…  ' + fetched + ' / ' + total;
+    packInfo.style.opacity = 1;
+  }
+
+  function onSessionReady(m) {
+    if (!packState) {
+      // opening was dropped (Field wasn't listening yet) — recover so play
+      // is still rippable and bulk results still show.
+      beginSession({
+        mode: m.mode === 'bulk' || (m.packs && m.packs.length > 1) ? 'bulk' : 'play',
+        competitive: m.competitive,
+        autoReveal: m.autoReveal,
+        packCount: (m.packs && m.packs.length) || m.packCount || 1
+      });
+    }
+    if (!packState) return;
+    packState.autoReveal = !!m.autoReveal;
+    packState.packs = m.packs || [];
+    packState.competitive = !!m.competitive;
+    if (packState.mode === 'bulk') {
+      showBulkResults(packState.packs);
+      return;
+    }
+    packState.cards = packState.packs[0] || [];
     if (packState.waiting) {
       packState.waiting = false;
       revealNext();
@@ -581,14 +814,29 @@
     packEl.innerHTML = PACK_MARKUP;
 
     packEl.style.display = 'block';
-    packEl.animate([
-      { transform: 'translate(-50%,-50%) translateY(45%) scale(.4) rotate(-8deg)', opacity: 0 },
-      { transform: 'translate(-50%,-50%) scale(1) rotate(0deg)', opacity: 1 }
-    ], { duration: 520, easing: 'cubic-bezier(.2,.9,.25,1.3)', fill: 'forwards' });
-
     awaitingRip = true;
     packInfo.style.opacity = 1;
-    packInfo.textContent = (packState.competitive ? '🏆 Tap to rip open your Competitive pack!' : '📦 Tap to rip open the pack!');
+    packInfo.textContent = packState.autoReveal
+      ? (packState.competitive ? '🏆 Opening your Competitive pack…' : '📦 Opening pack…')
+      : (packState.competitive ? '🏆 Tap to rip open your Competitive pack!' : '📦 Tap to rip open the pack!');
+
+    // auto-reveal: tear the wrapper as soon as the intro animation finishes
+    // (ripPack already handles cards that haven't arrived yet). Schedule the
+    // timeout FIRST so a missing/throwing Web Animation can't skip auto-rip.
+    let introDone = false;
+    const afterIntro = () => {
+      if (introDone) return;
+      introDone = true;
+      if (packState && packState.autoReveal && awaitingRip) ripPack();
+    };
+    setTimeout(afterIntro, 750);
+    try {
+      const intro = packEl.animate([
+        { transform: 'translate(-50%,-50%) translateY(45%) scale(.4) rotate(-8deg)', opacity: 0 },
+        { transform: 'translate(-50%,-50%) scale(1) rotate(0deg)', opacity: 1 }
+      ], { duration: 520, easing: 'cubic-bezier(.2,.9,.25,1.3)', fill: 'forwards' });
+      if (intro) intro.onfinish = afterIntro;
+    } catch (_) { /* timeout is the backstop */ }
   }
 
   // tear the wrapper apart, then start revealing the cards
@@ -598,26 +846,6 @@
     animating = true;
     vscode.postMessage({ type: 'packRipped' }); // tell the host it's safe to commit these cards now
 
-    const top = packEl.querySelector('.pack-top');
-    const bot = packEl.querySelector('.pack-bottom');
-
-    flash.animate([{ opacity: .9 }, { opacity: 0 }], { duration: 420, easing: 'ease-out' });
-    shake();
-    burst();
-
-    top.animate([
-      { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
-      { transform: 'translateY(-190%) rotate(-18deg)', opacity: 0 }
-    ], { duration: 620, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards' });
-
-    const b = bot.animate([
-      { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
-      { transform: 'translateY(150%) rotate(12deg)', opacity: 0 }
-    ], { duration: 680, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards', delay: 90 });
-
-    // same onfinish-reliability guard as draw(): clear `animating` and start
-    // the reveal exactly once, with a timeout backstop so a missed onfinish
-    // can't leave the pack sealed forever.
     let torn = false;
     const afterTear = () => {
       if (torn) return; torn = true;
@@ -625,12 +853,30 @@
       animating = false;
       revealNext();
     };
-    b.onfinish = afterTear;
-    setTimeout(afterTear, 1100); // > delay + duration
+    setTimeout(afterTear, 1100); // > delay + duration; backstop if onfinish never fires
+
+    const top = packEl.querySelector('.pack-top');
+    const bot = packEl.querySelector('.pack-bottom');
+    try {
+      flash.animate([{ opacity: .9 }, { opacity: 0 }], { duration: 420, easing: 'ease-out' });
+      shake();
+      burst();
+      if (top) top.animate([
+        { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
+        { transform: 'translateY(-190%) rotate(-18deg)', opacity: 0 }
+      ], { duration: 620, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards' });
+      if (bot) {
+        const b = bot.animate([
+          { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
+          { transform: 'translateY(150%) rotate(12deg)', opacity: 0 }
+        ], { duration: 680, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards', delay: 90 });
+        if (b) b.onfinish = afterTear;
+      }
+    } catch (_) { /* timeout is the backstop */ }
   }
 
   function revealNext() {
-    if (!packState || animating) return;
+    if (!packState || packState.mode === 'bulk' || animating) return;
     if (!packState.cards) {              // ripped before cards arrived
       packState.waiting = true;
       packInfo.textContent = 'Opening…';
@@ -645,13 +891,146 @@
   }
 
   function finishPack() {
-    const cards = packState.cards;
+    const cards = packState.cards || [];
     const competitive = packState.competitive;
     const newCount = cards.filter(c => c.isNew).length;
     packState = null;
     packDone = true;    // next tap goes back to the start screen
     packInfo.textContent = (competitive ? '🏆 ' : '📦 ') + newCount + ' new  —  tap to return';
     packInfo.style.opacity = 1;
+    updateCompBtn();
+  }
+
+  function money(n) {
+    return '$' + Number(n).toFixed(2);
+  }
+
+  function cardPriceLabel(c) {
+    return c && c.price != null && Number.isFinite(Number(c.price))
+      ? money(c.price)
+      : '';
+  }
+
+  function pullValue(cards) {
+    return (cards || []).reduce((s, c) => s + (Number(c && c.price) || 0), 0);
+  }
+
+  function closeBulkModal() {
+    bulkModal.classList.remove('show');
+  }
+
+  function openBulkModal(c) {
+    const art = document.getElementById('bulkModalArt');
+    const zoomArt = c.imageFull || c.image;
+    art.innerHTML = zoomArt
+      ? '<img src="' + esc(zoomArt) + '" alt=""><div class="mholo"></div>'
+      : esc(c.emoji || '🃏') + '<div class="mholo"></div>';
+
+    document.getElementById('bulkModalName').textContent = c.name || '???';
+
+    const icon = ATTR_ICON[c[THEME.attrKey]] || '';
+    document.getElementById('bulkModalType').textContent =
+      [c.type, icon].filter(Boolean).join('   ');
+
+    document.getElementById('bulkModalStats').innerHTML = (THEME.stats || [])
+      .filter(s => c[s.key] != null)
+      .map(s => '<span>' + esc(s.label) + ' <b>' + esc(c[s.key]) + '</b></span>')
+      .join('');
+
+    const priceEl = document.getElementById('bulkModalPrice');
+    const price = cardPriceLabel(c);
+    priceEl.textContent = price || 'No market price';
+    priceEl.classList.toggle('none', !price);
+
+    document.getElementById('bulkModalDesc').textContent = c.desc || '';
+
+    document.getElementById('bulkModalMeta').textContent =
+      (c.isNew ? 'NEW' : 'Owned ×' + (c.count || 1)) +
+      (c.rarity ? '  ·  ' + c.rarity : '');
+
+    bulkModal.classList.add('show');
+  }
+
+  function hidePackResults() {
+    closeBulkModal();
+    bulkShownCards = [];
+    packResults.classList.remove('show');
+    packResults.innerHTML = '';
+  }
+
+  function showBulkOpening() {
+    card.innerHTML = '';
+    meta.style.opacity = 0;
+    badge.textContent = ''; badge.className = '';
+    hint.style.display = 'none';
+    packEl.style.display = 'none';
+    packInfo.style.opacity = 1;
+    const n = packState.packCount;
+    packInfo.textContent = (packState.competitive ? '🏆 ' : '📦 ') +
+      'Opening ' + n + ' pack' + (n > 1 ? 's' : '') + '…';
+  }
+
+  function showBulkResults(packs) {
+    const list = packs || [];
+    const cards = list.flat();
+    const newCount = cards.filter(c => c.isNew).length;
+    const value = pullValue(cards);
+    packEl.style.display = 'none';
+    awaitingRip = false;
+    animating = false;
+    packDone = true;
+    if (cards.length) updateStats(cards[cards.length - 1]);
+    packInfo.style.opacity = 0;
+    hint.style.display = 'none';
+    closeBulkModal();
+    bulkShownCards = [];
+
+    const title = (packState.competitive ? '🏆 ' : '📦 ') +
+      list.length + ' pack' + (list.length > 1 ? 's' : '') + ' opened';
+    packResults.innerHTML =
+      '<div class="results-head">' +
+        '<div>' +
+          '<div class="results-title">' + title + '</div>' +
+          '<div class="results-sub">' + newCount + ' new  ·  ' + cards.length +
+            ' cards  ·  ' + money(value) + '</div>' +
+        '</div>' +
+        '<button type="button" id="resultsDone">Done</button>' +
+      '</div>' +
+      list.map((pack, i) =>
+        '<div class="results-pack">' +
+          '<div class="results-pack-label">Pack ' + (i + 1) + '</div>' +
+          '<div class="results-row">' +
+            pack.map(c => {
+              const idx = bulkShownCards.length;
+              bulkShownCards.push(c);
+              const art = c.image
+                ? '<img loading="lazy" src="' + esc(c.image) + '" alt="">'
+                : '<div class="r-fallback">' + esc(c.emoji || '🃏') + '</div>';
+              const name = esc(c.name || '???') +
+                (c.rarity ? ' (' + esc(c.rarity) + ')' : '');
+              const price = cardPriceLabel(c);
+              return '<div class="r-card' + (c.isNew ? ' new' : '') +
+                '" data-idx="' + idx + '" role="button" tabindex="0">' +
+                '<div class="r-thumb">' + art +
+                  (c.isNew ? '<span class="r-new">NEW</span>' : '') +
+                '</div>' +
+                '<div class="r-name">' + name + '</div>' +
+                '<div class="r-price' + (price ? '' : ' none') + '">' +
+                  (price || '—') + '</div>' +
+              '</div>';
+            }).join('') +
+          '</div>' +
+        '</div>'
+      ).join('');
+    packResults.classList.add('show');
+    const done = document.getElementById('resultsDone');
+    if (done) done.addEventListener('click', e => {
+      e.stopPropagation();
+      packState = null;
+      packDone = false;
+      showStartScreen();
+      updateCompBtn();
+    });
   }
 
   // a draw or pack fetch failed on the host side (network down, API rate-
@@ -659,17 +1038,22 @@
   // or a sealed wrapper waiting to be ripped) and return to idle instead of
   // leaving the panel stuck.
   function handleFetchFailed() {
+    openingRequested = false;
+    hidePackResults();
     [cardWrap, ring, glow, banner, meta].forEach(el => el.getAnimations().forEach(a => a.cancel()));
     packEl.getAnimations().forEach(a => a.cancel());
+    cancelPendingSettle();
     animating = false;
     awaitingRip = false;
     packDone = false;
     packState = null;
     showStartScreen();
+    updateCompBtn();
   }
 
   // reset everything back to the idle "ready to draw" screen
   function showStartScreen() {
+    hidePackResults();
     packEl.style.display = 'none';
     card.innerHTML = '';
     meta.style.opacity = 0;
@@ -766,6 +1150,17 @@
 
   const vscode = acquireVsCodeApi();
 
+  function requestOpenPacks(track, count) {
+    if (packBusy()) return false;
+    if (track === 'competitive' && credits <= 0) return false;
+    openingRequested = true;
+    updateCompBtn();
+    vscode.postMessage({ type: 'openPacks', track: track, count: count });
+    return true;
+  }
+
+  document.getElementById('topLeft').addEventListener('click', e => e.stopPropagation());
+
   // Warm the browser cache for cards that are queued up in the extension's
   // buffer, so preload() resolves instantly when one is actually drawn.
   const warmed = new Set();
@@ -783,8 +1178,21 @@
     const m = e.data;
     if (!m) return;
     if (m.type === 'draw') draw(m.card);
-    else if (m.type === 'packOpening') beginPack(m.competitive);
-    else if (m.type === 'packCards') onPackCards(m.cards || []);
+    else if (m.type === 'packSession') {
+      if (m.phase === 'opening') beginSession(m);
+      else if (m.phase === 'progress') onSessionProgress(m);
+      else if (m.phase === 'ready') onSessionReady(m);
+      else if (m.phase === 'failed') handleFetchFailed();
+      else if (m.phase === 'idle') {
+        openingRequested = false;
+        updateCompBtn();
+        if (packState && !packState.packs && !packState.cards) handleFetchFailed();
+      }
+    }
+    else if (m.type === 'packLock') {
+      openingRequested = !!m.busy;
+      updateCompBtn();
+    }
     else if (m.type === 'prefetch') prefetch(m.urls || []);
     else if (m.type === 'restore') restoreCard(m.card);
     else if (m.type === 'credits') { credits = m.credits || 0; updateCompBtn(); }
@@ -801,14 +1209,18 @@
 
   packBtn.addEventListener('click', e => {
     e.stopPropagation();
-    if (animating || awaitingRip || packState) return;
-    vscode.postMessage({ type: 'openPack' });
+    requestOpenPacks('sandbox', 1);
   });
 
   compBtn.addEventListener('click', e => {
     e.stopPropagation();
-    if (animating || awaitingRip || packState || credits <= 0) return;
-    vscode.postMessage({ type: 'openCompetitivePack' });
+    requestOpenPacks('competitive', 1);
+  });
+
+  compAllBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (credits <= 1) return;
+    requestOpenPacks('competitive', 'all');
   });
 
   // build the game switcher; clicking another game asks the extension to swap
@@ -829,11 +1241,54 @@
     if (idleAnim) hidden ? idleAnim.pause() : idleAnim.play();
   });
 
+  packResults.addEventListener('click', e => {
+    const cell = e.target.closest('.r-card');
+    if (!cell) return;
+    e.stopPropagation();
+    // A drag that selected name/price text should copy, not open the popup.
+    const sel = window.getSelection && String(window.getSelection());
+    if (sel && e.target.closest('.r-name, .r-price')) return;
+    const c = bulkShownCards[Number(cell.dataset.idx)];
+    if (c) openBulkModal(c);
+  });
+  packResults.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const cell = e.target.closest('.r-card');
+    if (!cell) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const c = bulkShownCards[Number(cell.dataset.idx)];
+    if (c) openBulkModal(c);
+  });
+  function stopFieldClicks(e) { e.stopPropagation(); }
+  bulkModalCard.addEventListener('pointerdown', stopFieldClicks);
+  bulkModalCard.addEventListener('mousedown', stopFieldClicks);
+  bulkModalCard.addEventListener('click', stopFieldClicks);
+  bulkModal.addEventListener('pointerdown', stopFieldClicks);
+  bulkModal.addEventListener('click', e => {
+    e.stopPropagation();
+    const sel = window.getSelection && String(window.getSelection());
+    if (sel) return; // finishing a text-select drag must not dismiss
+    if (e.target === bulkModal) closeBulkModal();
+  });
+  document.getElementById('bulkModalClose').addEventListener('click', e => {
+    e.stopPropagation();
+    closeBulkModal();
+  });
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeBulkModal();
+  });
+
   // click the field to draw a real card (asks the extension to fetch one)
   field.addEventListener('click', () => {
+    if (bulkModal.classList.contains('show')) return;
+    if (packResults.classList.contains('show')) return; // Done button dismisses bulk results
     if (animating) return;            // ignore taps mid-animation
     if (awaitingRip) { ripPack(); return; }      // tear the pack open
-    if (packState) { revealNext(); return; }     // advance the reveal
+    if (packState && packState.mode !== 'bulk') {
+      revealNext();
+      return;
+    }
     if (packDone) { packDone = false; showStartScreen(); return; } // back to start
     meta.style.opacity = 1;
     meta.textContent = 'Drawing…';

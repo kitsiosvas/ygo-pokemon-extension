@@ -2,7 +2,7 @@
   "name": "ygo-duel",
   "displayName": "YGO Duel Mode",
   "description": "It's time to d-d-d-duel! Real trading-card draw animations inside VS Code.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "local",
   "private": true,
   "engines": {
@@ -13,6 +13,9 @@
   ],
   "activationEvents": [],
   "main": "./extension.js",
+  "scripts": {
+    "test": "node --test packs.test.js"
+  },
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -68,6 +71,14 @@
         "title": "Cards: Open Competitive Pack 🏆"
       },
       {
+        "command": "ygoDuel.openAllCompetitivePacks",
+        "title": "Cards: Open Bulk Competitive Packs 🏆"
+      },
+      {
+        "command": "ygoDuel.openMultiplePacks",
+        "title": "Cards: Open Multiple Packs…"
+      },
+      {
         "command": "ygoDuel.setGithubToken",
         "title": "Cards: Set GitHub Token (Competitive Packs)"
       },
@@ -115,6 +126,12 @@
           "type": "number",
           "default": 15,
           "description": "How often to poll GitHub in the background for newly-merged PRs and direct-to-main commits."
+        },
+        "ygoDuel.packReveal": {
+          "type": "string",
+          "enum": ["auto", "tap"],
+          "default": "tap",
+          "description": "How a single pack's wrapper is opened. tap (default): the pack appears, then tap to rip, then tap each card. auto: the wrapper rips itself after it lands, then tap each card."
         }
       }
     }

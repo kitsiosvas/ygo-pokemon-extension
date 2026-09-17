@@ -36,6 +36,7 @@
  *                                newCredits, totalCredits, baseline?, error? }
  *   getCredits(context)       — current pack-credit balance (sync, globalState)
  *   spendCredit(context)      async — decrement by 1 if available; returns bool
+ *   spendCredits(context, n)  async — decrement by n (clamped to the balance); returns amount spent
  *   resetProgress(context)    async — wipe credits/history/baseline (support/testing)
  */
 
@@ -263,10 +264,18 @@ function getCredits(context) {
 }
 
 async function spendCredit(context) {
+  return (await spendCredits(context, 1)) === 1;
+}
+
+/** Spend up to `n` Competitive pack credits in one write. Returns the number
+ *  actually deducted (0 if the balance is empty or n isn't a positive int). */
+async function spendCredits(context, n) {
+  const want = Math.max(0, Math.floor(Number(n) || 0));
   const current = getCredits(context);
-  if (current <= 0) return false;
-  await context.globalState.update(CREDITS_KEY, current - 1);
-  return true;
+  const spend = Math.min(want, current);
+  if (spend <= 0) return 0;
+  await context.globalState.update(CREDITS_KEY, current - spend);
+  return spend;
 }
 
 /**
@@ -414,7 +423,7 @@ async function resetProgress(context) {
 }
 
 module.exports = {
-  promptForToken, promptForServer, hasToken, checkMerges, getCredits, spendCredit, resetProgress,
+  promptForToken, promptForServer, hasToken, checkMerges, getCredits, spendCredit, spendCredits, resetProgress,
   // exported for clarity/tests; not required by extension.js
   creditsForLines
 };

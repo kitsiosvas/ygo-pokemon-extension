@@ -49,10 +49,17 @@ prices" below.
    - **Cards: Open Yu-Gi-Oh Field** — play with Yu-Gi-Oh cards
    - **Cards: Open Pokémon Field** — switch to Pokémon (TCG cards)
    - **Cards: Draw a Card!** — draw a random card in the active game (Sandbox)
-   - **Cards: Open a Pack** — rip a free 5-card Sandbox booster
-   - **Cards: Open Binder** — open the collection grid for the active game/track
-   - **Cards: Open Competitive Pack 🏆** — spend one earned credit on a
-     5-card Competitive booster (disabled/no-ops at 0 credits)
+  - **Cards: Open a Pack** — a free 5-card Sandbox booster (tap to rip the wrapper, then tap each card)
+  - **Cards: Open Binder** — open the collection grid for the active game/track
+  - **Cards: Open Competitive Pack 🏆** — spend one earned credit on a
+    5-card Competitive booster (disabled/no-ops at 0 credits). Same tap-to-rip, tap-each-card flow as Sandbox.
+  - **Cards: Open Bulk Competitive Packs 🏆** — open up to 20 earned Competitive
+    packs at once and show the cards in a results grid. Confirms first; leftover
+    credits stay on the balance.
+  - **Cards: Open Multiple Packs…** — pick Sandbox or Competitive and a count;
+    2+ packs use the same results grid. Competitive is clamped to your credit balance
+    (max 20 per burst) and confirms before spending; Sandbox is free, so 2+ Sandbox
+    packs open immediately with no confirm.
    - **Cards: Set GitHub Server (Competitive Packs)** — switch between
      github.com and an on-site GitHub Enterprise Server, see below
    - **Cards: Set GitHub Token (Competitive Packs)** — one-time setup, see below
@@ -64,6 +71,25 @@ prices" below.
 The two "Open … Field" commands pick the **active game**; everything else
 (Draw, Open a Pack, Binder, Reset) operates on whichever game is active.
 Each game keeps its own collection, so they never mix.
+
+### Opening packs (single + bulk)
+
+Two separate flows, both from the Field, the Binder, and the Command Palette:
+
+1. **One pack.** Click **Pack** or **Competitive** — the sealed wrapper lands,
+   tap it to rip, then tap each card to reveal the next. Credits still spend
+   only when the wrapper actually tears, so closing the panel mid-fetch costs
+   nothing. Set `ygoDuel.packReveal` to `auto` if you want the wrapper to rip
+   itself as soon as it appears.
+2. **Bulk / open many.** With 2+ Competitive credits, **Open N**
+   (N is `min(credits, 20)`) confirms, spends that many credits, fetches every card, and shows them in
+   a scrollable Binder-style grid — name, rarity, and market price on each card,
+   click to inspect (same popup as the Binder). New cards are highlighted and
+   grouped by pack; the header totals the pull's value. Sandbox has
+   no credit cap, so use **Cards: Open Multiple Packs…** and pick a count
+   (max 20 per burst) — nothing is spent, so there's no confirm step; only a
+   Competitive bulk open asks first. A partial fetch still commits the packs
+   that landed and leaves the rest of your credits.
 
 ### Real card rarity & prices
 
@@ -93,8 +119,9 @@ whatever image they were caught with — nothing is backfilled retroactively.
 | File | Role |
 |------|------|
 | `package.json` | Extension manifest — commands + `ygoDuel.drawOnSave` setting (static; VS Code reads this at load) |
-| `extension.js` | **Host logic.** Holds the `GAMES` registry + active-game switching, manages the two webview panels, runs the prefetch buffer, persists per-game collections (Sandbox + Competitive tracks). Game-agnostic. |
-| `github.js` | **Competitive packs' data layer.** PAT storage (SecretStorage), polls GitHub for merged PRs you authored and direct default-branch commits (skipping PR-linked SHAs so merges aren't double-counted), awards 1–3 credits by lines changed, tracks the pack-credit balance. Never shows UI — `extension.js` owns all toasts. |
+| `extension.js` | **Host logic.** Holds the `GAMES` registry + active-game switching, manages the two webview panels, runs the prefetch buffer, persists per-game collections (Sandbox + Competitive tracks), and owns pack *sessions* (1-pack play vs N-pack bulk). Game-agnostic. |
+| `packs.js` | **Pack-session domain.** Pack size, count clamping, collection fold (`applyDraw`), preview/sort of N packs. Pure — no vscode, no I/O. |
+| `github.js` | **Competitive packs' data layer.** PAT storage (SecretStorage), polls GitHub for merged PRs you authored and direct default-branch commits (skipping PR-linked SHAs so merges aren't double-counted), awards 1–3 credits by lines changed, tracks the pack-credit balance (`spendCredit` / `spendCredits`). Never shows UI — `extension.js` owns all toasts. |
 | `http.js` | Tiny shared HTTPS JSON fetch helper used by both game adapters; forces https so card fetches work behind a TLS-inspecting proxy. |
 | `games/yugioh.js`, `games/pokemon.js` | **The game definitions** — the *only* places a game is hardcoded. Each exports a data adapter (`fetchOne`/`keep`/`normalize`/`power`) + a `theme` object (titles, words, stat rows, attr icons, image hosts, pack wordmark). |
 | `media/duel.html` | The Field — draw/pack CSS+JS animation, sandboxed in a webview. Theme-driven. |
@@ -114,8 +141,12 @@ whatever image they were caught with — nothing is backfilled retroactively.
 - **Host ↔ webview:** the host injects `{{THEME}}` (theme as JSON),
   `{{IMG_HOSTS}}`, `{{CSP_SOURCE}}`, and `{{PACK_IMG}}` into the HTML when a
   panel opens or the game switches (`renderHtml`), then communicates over
-  `postMessage` (`draw` / `packOpening` / `packCards` / `prefetch` → webview;
-  `requestDraw` / `openPack` / `openBinder` / `ready` → host).
+  `postMessage` (`draw` / `packSession` / `prefetch` → webview;
+  `requestDraw` / `openPacks` / `openBinder` / `ready` → host).
+  A pack session has phases `opening` → (`progress`) → `ready` (or `failed`).
+  Mode `play` is one pack (tap the wrapper to rip, then tap each card);
+  mode `bulk` is 2+ packs (results grid, commit as soon as the fetch lands).
+  Set `ygoDuel.packReveal` to `auto` if you want the wrapper to rip itself.
 - **Data flow:** a background **buffer** of pre-fetched cards (persisted to
   globalStorage so reloads start warm) → `recordCollection` stores the whole
   normalized card in globalState → payload posted to the webview. The webview
@@ -156,7 +187,7 @@ run **Developer: Reload Window**.
 # preview only:  .\sync-to-vscode.ps1 -WhatIf
 ```
 
-Copies `extension.js`, `github.js`, `http.js`, `package.json`, `games\*.js`,
+Copies `extension.js`, `github.js`, `http.js`, `packs.js`, `package.json`, `games\*.js`,
 `media\duel.html`, `media\binder.html`, `media\icon.svg`, and any
 `media\pack-*` art into `%USERPROFILE%\.vscode\extensions\ygo-duel\` and/or
 `%USERPROFILE%\.cursor\extensions\ygo-duel\`. First Cursor sync also registers
@@ -172,6 +203,7 @@ mkdir -p "$DST/games" "$DST/media"
 cp "$SRC/extension.js"      "$DST/extension.js"
 cp "$SRC/github.js"         "$DST/github.js"
 cp "$SRC/http.js"           "$DST/http.js"
+cp "$SRC/packs.js"          "$DST/packs.js"
 cp "$SRC/games/"*.js        "$DST/games/"
 cp "$SRC/package.json"      "$DST/package.json"
 cp "$SRC/media/duel.html"   "$DST/media/duel.html"

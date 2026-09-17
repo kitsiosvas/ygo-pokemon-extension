@@ -182,6 +182,7 @@
     <input id="search" type="text" placeholder="Search…" autocomplete="off">
     <button class="primary" id="drawBtn">⚔️ Draw</button>
     <button id="packBtn">📦 Open Pack</button>
+      <button id="packAllBtn" style="display:none">Open 20</button>
     <button class="danger" id="resetBtn">Reset</button>
   </header>
   <div id="grid"></div>
@@ -204,6 +205,7 @@
   // available games + which is active, for the in-panel switcher (mirrors duel.html)
   const GAMES = {{GAMES}};
   const ACTIVE_GAME = "{{ACTIVE_GAME}}";
+  const MAX_BULK_PACKS = {{MAX_BULK_PACKS}};
   const vscode = acquireVsCodeApi();
   const grid = document.getElementById('grid');
   const empty = document.getElementById('empty');
@@ -213,7 +215,9 @@
   const trackToggle = document.getElementById('trackToggle');
   const drawBtn = document.getElementById('drawBtn');
   const packBtn = document.getElementById('packBtn');
+  const packAllBtn = document.getElementById('packAllBtn');
   const resetBtn = document.getElementById('resetBtn');
+  let openingRequested = false;
   let allCards = [];
   let shownCards = []; // the currently rendered (filtered+sorted) list, indexed for the modal
   let track = 'sandbox';   // which collection is showing: 'sandbox' | 'competitive'
@@ -285,12 +289,21 @@
     resetBtn.textContent = 'Reset ' + (track === 'competitive' ? 'Competitive' : 'Sandbox');
     if (track === 'competitive') {
       packBtn.textContent = '🏆 Open Competitive Pack' + (credits > 0 ? ' (' + credits + ')' : '');
-      packBtn.disabled = credits <= 0;
+      packBtn.disabled = openingRequested || credits <= 0;
       packBtn.title = credits > 0 ? '' : 'Merge a PR or push to main to earn one';
+      const burst = Math.min(credits, MAX_BULK_PACKS);
+      packAllBtn.style.display = burst > 1 ? 'inline-block' : 'none';
+      packAllBtn.textContent = 'Open ' + burst;
+      packAllBtn.disabled = openingRequested || burst <= 1;
+      packAllBtn.title = credits > burst
+        ? 'Open ' + burst + ' of ' + credits + ' Competitive packs (max per burst). ' +
+          (credits - burst) + ' remain.'
+        : 'Open ' + burst + ' Competitive packs';
     } else {
       packBtn.textContent = '📦 Open Pack';
-      packBtn.disabled = false;
+      packBtn.disabled = openingRequested;
       packBtn.title = '';
+      packAllBtn.style.display = 'none';
     }
     empty.innerHTML = track === 'competitive'
       ? '🏆 No Competitive cards yet.<br>Merge a PR or push to main to earn your first pack!'
@@ -381,7 +394,13 @@
 
   window.addEventListener('message', e => {
     const m = e.data;
-    if (!m || m.type !== 'collection') return;
+    if (!m) return;
+    if (m.type === 'packLock') {
+      openingRequested = !!m.busy;
+      updateTrackUI();
+      return;
+    }
+    if (m.type !== 'collection') return;
     track = m.track === 'competitive' ? 'competitive' : 'sandbox';
     credits = m.credits || 0;
     allCards = m.cards || [];
@@ -399,12 +418,23 @@
   drawBtn.addEventListener('click',
     () => vscode.postMessage({ type: 'requestDraw' }));
   packBtn.addEventListener('click', () => {
+    if (openingRequested) return;
     if (track === 'competitive') {
       if (credits <= 0) return;
-      vscode.postMessage({ type: 'openCompetitivePack' });
+      openingRequested = true;
+      updateTrackUI();
+      vscode.postMessage({ type: 'openPacks', track: 'competitive', count: 1 });
     } else {
-      vscode.postMessage({ type: 'openPack' });
+      openingRequested = true;
+      updateTrackUI();
+      vscode.postMessage({ type: 'openPacks', track: 'sandbox', count: 1 });
     }
+  });
+  packAllBtn.addEventListener('click', () => {
+    if (openingRequested || track !== 'competitive' || credits <= 1) return;
+    openingRequested = true;
+    updateTrackUI();
+    vscode.postMessage({ type: 'openPacks', track: 'competitive', count: 'all' });
   });
   resetBtn.addEventListener('click',
     () => vscode.postMessage({ type: 'reset' }));

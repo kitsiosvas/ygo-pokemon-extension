@@ -3,6 +3,17 @@ const fs = require('fs');
 const path = require('path');
 const util = require('util');
 const github = require('./github');
+const {
+  PACK_SIZE,
+  MAX_BULK_PACKS,
+  applyDraw,
+  previewPacks,
+  resolvePackCount,
+  canStartPackOpen,
+  settlePackSpend,
+  coalesceRefillGoal,
+  liveRefillGoal
+} = require('./packs');
 
 // Available game definitions (data adapter + theme). Add a game by dropping a
 // module in ./games/ and registering it here; a command switches between them.
@@ -63,20 +74,26 @@ function sendRestore() {
  *  new theme, warm the new game's buffer, and refresh the binder. */
 function setActiveGame(id) {
   if (!GAMES[id] || id === gameId) return;
+  // An unopened pack is abandoned on game switch (costs nothing — no credit
+  // spent); its cards go back on BUFFER first so the flush below caches them.
+  discardPackSession();
   // Persist the OUTGOING game's buffer to ITS own file right now (and cancel any
-  // pending debounced write) BEFORE swapping. The debounced writer binds its
-  // target filename when scheduled but the buffer contents only when it fires
-  // (~400ms later); a switch inside that window would otherwise flush the
-  // incoming game's cards into the outgoing game's file. See persistBufferSoon.
+  // pending debounced write — including the one discard just scheduled) BEFORE
+  // swapping. The debounced writer binds its target filename when scheduled but
+  // the buffer contents only when it fires (~400ms later); a switch inside that
+  // window would otherwise flush the incoming game's cards into the outgoing
+  // game's file. See persistBufferSoon.
   flushBufferNow();
-  discardPendingPack(); // an unopened pack is abandoned on game switch (costs nothing — no credit spent)
   gameId = id;
   game = GAMES[id];
   extCtx.globalState.update(ACTIVE_GAME_KEY, id);
 
   BUFFER.length = 0;   // drop the previous game's cards
   loadBufferCache();   // warm-start this game's buffer from its own cache
-  if (panel) panel.webview.html = renderHtml(panel.webview, 'duel.html');
+  if (panel) {
+    fieldReady = false;
+    panel.webview.html = renderHtml(panel.webview, 'duel.html');
+  }
   if (binderPanel) binderPanel.webview.html = renderHtml(binderPanel.webview, 'binder.html');
   ensureRefill();
   sendCollection(binderTrack);
@@ -104,6 +121,7 @@ class DuelMenuProvider {
       new DuelMenuItem('Draw a Card',              'ygoDuel.draw',                'arrow-right',    'Draw a random card'),
       new DuelMenuItem('Open a Pack',              'ygoDuel.openPack',            'package',        'Open a free booster pack'),
       new DuelMenuItem('Open Competitive Pack',    'ygoDuel.openCompetitivePack', 'star',           'Open a Competitive pack (requires earned credits)'),
+      new DuelMenuItem('Open Bulk Competitive Packs','ygoDuel.openAllCompetitivePacks', 'star-full', 'Open up to 20 earned Competitive packs at once'),
       new DuelMenuItem('Open Binder',              'ygoDuel.openBinder',          'book',           'View your full card collection'),
       new DuelMenuItem('Check for Competitive Activity', 'ygoDuel.checkMerges',   'github',         'Check GitHub for new merges and direct-to-main commits'),
 
@@ -136,12 +154,20 @@ function activate(context) {
 
     vscode.commands.registerCommand('ygoDuel.openPack', async () => {
       ensurePanel(context);
-      await doPack('sandbox');
+      await openPacks('sandbox', 1);
     }),
 
     vscode.commands.registerCommand('ygoDuel.openCompetitivePack', async () => {
       ensurePanel(context);
-      await doPack('competitive');
+      await openPacks('competitive', 1);
+    }),
+
+    vscode.commands.registerCommand('ygoDuel.openAllCompetitivePacks', async () => {
+      await openPacks('competitive', 'all', { context });
+    }),
+
+    vscode.commands.registerCommand('ygoDuel.openMultiplePacks', async () => {
+      await promptAndOpenMultiplePacks(context);
     }),
 
     vscode.commands.registerCommand('ygoDuel.setGithubToken', async () => {
@@ -232,6 +258,7 @@ function ensurePanel(context) {
     panel.reveal(vscode.ViewColumn.Beside, true);
     return;
   }
+  fieldReady = false;
   panel = vscode.window.createWebviewPanel(
     'ygoDuel',
     game.theme.fieldTitle,
@@ -242,15 +269,23 @@ function ensurePanel(context) {
   panel.webview.onDidReceiveMessage(msg => {
     if (!msg) return;
     if (msg.type === 'requestDraw') doDraw();
-    else if (msg.type === 'openPack') doPack('sandbox');
-    else if (msg.type === 'openCompetitivePack') doPack('competitive');
+    else if (msg.type === 'openPack') openPacks('sandbox', 1);
+    else if (msg.type === 'openCompetitivePack') openPacks('competitive', 1);
+    else if (msg.type === 'openPacks') openPacks(msg.track, msg.count);
     else if (msg.type === 'packRipped') onPackRipped();
     else if (msg.type === 'openBinder') openBinder(context);
     else if (msg.type === 'setGame') setActiveGame(msg.id);
     else if (msg.type === 'shown') lastCardByGame[msg.gameId] = msg.card;
-    else if (msg.type === 'ready') { sendPrefetch(); sendRestore(); sendCredits(); }
+    else if (msg.type === 'ready') {
+      fieldReady = true;
+      sendPrefetch();
+      sendCredits();
+      postPackLock(packLock);
+      replayPackSession();
+      sendRestore(); // after the replay, so restoreCard's session guard sees an in-flight pack
+    }
   });
-  panel.onDidDispose(() => { panel = null; discardPendingPack(); });
+  panel.onDidDispose(() => { panel = null; fieldReady = false; discardPackSession(); });
 }
 
 /** Read a webview HTML file and fill in the templated placeholders: the CSP
@@ -264,7 +299,8 @@ function renderHtml(webview, file) {
     .replace(/{{THEME}}/g, JSON.stringify(game.theme))
     .replace(/{{GAMES}}/g, JSON.stringify(games))
     .replace(/{{ACTIVE_GAME}}/g, gameId)
-    .replace(/{{PACK_IMG}}/g, packImageUri(webview));
+    .replace(/{{PACK_IMG}}/g, packImageUri(webview))
+    .replace(/{{MAX_BULK_PACKS}}/g, String(MAX_BULK_PACKS));
 }
 
 /** If a real booster-pack image for the active game is bundled in media/
@@ -400,96 +436,385 @@ function sendPrefetch(extraUrls = []) {
   if (urls.length) panel.webview.postMessage({ type: 'prefetch', urls });
 }
 
-const PACK_SIZE = 5;
+/** In-flight pack session. Play mode (1 pack) is a preview until ripped —
+ *  nothing is recorded and no credit is spent until commitPackSession().
+ *  Bulk mode (2+ packs) commits as soon as the fetch lands, because there is
+ *  no wrapper to rip. Abandoned (game switch / panel close / reload) before
+ *  commit costs nothing. One session at a time; packEpoch invalidates an
+ *  in-flight fetch so a cancelled open can't commit against the next game.
+ *
+ *  packLock is taken at the start of openPacks (before the confirm await) and
+ *  held through spend+record so a second Field/Binder/palette open cannot
+ *  race a stale credit balance. packGate invalidates a lock holder that was
+ *  discarded mid-confirm. fieldReady gates packSession posts — the Field
+ *  replays the in-flight session when it becomes ready.
+ *
+ *  Every session and Field payload is tagged with the gameId it was opened
+ *  for: a session that outlives a game switch (spend already in flight)
+ *  still records under that game, and its posts/replay are skipped so the
+ *  freshly rendered other-game Field never sees them. */
+let packSession = null;
+let packEpoch = 0;
+let packLock = false;
+let packGate = 0;
+let fieldReady = false;
+let lastPackPayload = null;
+let ripBeforeReady = false; // play-mode: ripped the wrapper before the fetch finished
 
-/** A pack that's been fetched and rolled but not yet opened — the player is
- *  still looking at the sealed wrapper. It's a pure PREVIEW: nothing is
- *  recorded and (for Competitive) no credit is spent until the player rips it
- *  open (commitPendingPack). If they walk away first — switch games, close the
- *  panel, reload — it's simply discarded (discardPendingPack) at no cost. At
- *  most one at a time (the UI only allows one pack in flight). */
-let pendingPack = null;
-let ripBeforeReady = false; // player tore the wrapper open before the fetch finished drawing the pack
+function autoRevealEnabled() {
+  return vscode.workspace.getConfiguration('ygoDuel').get('packReveal') !== 'tap';
+}
 
-/** Draw a pack of monsters and send them for a one-by-one reveal, without
- *  touching the collection OR spending a credit yet — both happen only when
- *  the pack is actually ripped open. `track` is 'sandbox' (default, always
- *  free) or 'competitive' (needs a merge-earned credit available; the credit
- *  is verified here but not consumed until the rip). */
-async function doPack(track = 'sandbox') {
-  const competitive = track === 'competitive';
-  if (competitive && github.getCredits(extCtx) <= 0) {
-    vscode.window.showInformationMessage('🔒 No Competitive packs available yet — merge a PR or push to main to earn one!');
+function postPackLock(busy) {
+  const msg = { type: 'packLock', busy: !!busy };
+  if (panel && fieldReady) panel.webview.postMessage(msg);
+  if (binderPanel) binderPanel.webview.postMessage(msg);
+}
+
+function tryAcquirePackLock() {
+  if (!canStartPackOpen(packSession, packLock)) return 0;
+  packLock = true;
+  const gate = ++packGate;
+  postPackLock(true);
+  return gate;
+}
+
+function releasePackLock(gate) {
+  if (gate && gate !== packGate) return;
+  packLock = false;
+  postPackLock(false);
+}
+
+/** Post a session phase to the Field. `gid` is the game the session belongs
+ *  to (default: the active game); a payload for a game that is no longer
+ *  active is remembered but not posted — the Field on screen is the other
+ *  game's page and must not show it. */
+function postPackSession(payload, gid = gameId) {
+  lastPackPayload = { ...payload, gameId: gid };
+  if (gid !== gameId) return;
+  if (panel && fieldReady) panel.webview.postMessage({ type: 'packSession', ...lastPackPayload });
+}
+
+/** Replay opening / ready / failed once the Field is listening, so a palette
+ *  or Binder open while the panel is closed (or still loading) cannot drop
+ *  the session on the floor. A session/payload tagged with another game
+ *  (spend still finishing after a switch) is not replayed onto this Field. */
+function replayPackSession() {
+  if (!panel || !fieldReady) return;
+  if (packSession) {
+    if (packSession.gameId !== gameId) return;
+    const autoReveal = packSession.mode === 'play' && autoRevealEnabled();
+    const packCount = packSession.packCount || (packSession.packs ? packSession.packs.length : 1);
+    panel.webview.postMessage({
+      type: 'packSession',
+      phase: 'opening',
+      mode: packSession.mode,
+      competitive: packSession.competitive,
+      packCount,
+      autoReveal
+    });
+    if (packSession.packs) {
+      panel.webview.postMessage({
+        type: 'packSession',
+        phase: 'ready',
+        mode: packSession.mode,
+        competitive: packSession.competitive,
+        packs: packSession.packs,
+        autoReveal: packSession.mode === 'play' ? autoReveal : false
+      });
+    }
     return;
   }
-  pendingPack = null;     // abandon any prior unopened pack (UI guards against this, but be safe)
-  ripBeforeReady = false; // fresh pack: forget any stale early-rip from a prior one
+  if (lastPackPayload && lastPackPayload.gameId === gameId) {
+    panel.webview.postMessage({ type: 'packSession', ...lastPackPayload });
+  }
+}
 
-  // show the wrapper immediately; fetch the cards while the player reads it
-  if (panel) panel.webview.postMessage({ type: 'packOpening', competitive });
+function noCreditsMessage() {
+  vscode.window.showInformationMessage('🔒 No Competitive packs available yet — merge a PR or push to main to earn one!');
+}
 
-  let draws;
-  try {
-    draws = await Promise.all(
-      Array.from({ length: PACK_SIZE }, () => fetchRandomCard())
+/** Confirm text for a Competitive bulk open (the only open that confirms —
+ *  Sandbox costs nothing, so 2+ Sandbox packs open immediately). */
+function bulkConfirmMessage(n, available) {
+  const cards = n * PACK_SIZE;
+  const of = n < available ? ` ${n} of ${available}` : ` ${n}`;
+  return `Open${of} Competitive packs? ${cards} cards will be added to your Competitive collection and ${n} credit${n === 1 ? '' : 's'} will be spent.`;
+}
+
+/** Prompt for track + count, then open that many packs (bulk grid if > 1).
+ *  Confirm + lock live in openPacks, same as every other entry point. */
+async function promptAndOpenMultiplePacks(context) {
+  const credits = github.getCredits(extCtx);
+  let track = 'sandbox';
+  if (credits > 0) {
+    const pick = await vscode.window.showQuickPick([
+      { label: 'Sandbox (free)', description: 'Always available', track: 'sandbox' },
+      { label: 'Competitive', description: credits + ' pack' + (credits > 1 ? 's' : '') + ' available', track: 'competitive' }
+    ], { title: 'Which packs to open?' });
+    if (!pick) return;
+    track = pick.track;
+  }
+  const competitive = track === 'competitive';
+  const max = resolvePackCount('all', competitive ? credits : 0, competitive) || resolvePackCount(999, 0, false);
+  const input = await vscode.window.showInputBox({
+    title: 'How many packs?',
+    prompt: competitive ? `1–${max} (or “all”)` : `1–${max}`,
+    value: String(competitive ? max : Math.min(5, max)),
+    ignoreFocusOut: true,
+    validateInput: v => {
+      const s = String(v || '').trim().toLowerCase();
+      if (competitive && (s === 'all' || s === '*')) return;
+      const n = Math.floor(Number(s));
+      if (!Number.isInteger(n) || n < 1 || n > max) return `Enter a number from 1 to ${max}`;
+    }
+  });
+  if (input == null) return;
+  const s = input.trim().toLowerCase();
+  const count = (s === 'all' || s === '*') ? 'all' : Math.floor(Number(s));
+  await openPacks(track, count, { context });
+}
+
+/** Open `count` packs on `track`. count may be a number or 'all' (Competitive
+ *  only). 1 pack → play mode (wrapper + auto/tap reveal, commit on rip).
+ *  2+ packs → bulk mode (results grid, commit as soon as the fetch lands).
+ *  The host lock is taken before any confirm await so Field, Binder, and the
+ *  palette cannot overlap one economy. Only a Competitive bulk open confirms
+ *  (it spends credits); Sandbox opens immediately. */
+async function openPacks(track = 'sandbox', count = 1, opts = {}) {
+  const gate = tryAcquirePackLock();
+  if (!gate) {
+    vscode.window.showInformationMessage('A pack is already opening — finish it first.');
+    return;
+  }
+
+  track = track === 'competitive' ? 'competitive' : 'sandbox';
+  const competitive = track === 'competitive';
+  const credits = competitive ? github.getCredits(extCtx) : 0;
+  const n = resolvePackCount(count, credits, competitive);
+  if (n <= 0) {
+    if (competitive) noCreditsMessage();
+    releasePackLock(gate);
+    return;
+  }
+
+  if (n > 1 && competitive) {
+    const choice = await vscode.window.showWarningMessage(
+      bulkConfirmMessage(n, credits),
+      { modal: true },
+      'Open'
     );
+    if (gate !== packGate) {
+      // discarded during confirm (Field closed / game switched) — discardPackSession
+      // already dropped the lock; nothing was spent, but say so rather than no-op
+      vscode.window.showInformationMessage('Pack open cancelled — the Field was closed or the game changed while confirming. Nothing was spent.');
+      return;
+    }
+    if (choice !== 'Open') {
+      releasePackLock(gate);
+      postPackSession({ phase: 'idle' });
+      return;
+    }
+  }
+
+  if (gate !== packGate) return;
+
+  const ctx = opts.context || extCtx;
+  if (ctx) ensurePanel(ctx);
+
+  const mode = n > 1 ? 'bulk' : 'play';
+  const autoReveal = mode === 'play' && autoRevealEnabled();
+  const epoch = ++packEpoch;
+  const gid = gameId; // the game this session is for — see the packSession comment
+  ripBeforeReady = false;
+  packSession = {
+    epoch, gate, track, competitive, mode, gameId: gid,
+    packCount: n, packs: null, committed: false, writing: false
+  };
+
+  postPackSession({ phase: 'opening', mode, competitive, packCount: n, autoReveal }, gid);
+
+  const needed = n * PACK_SIZE;
+  let raw;
+  try {
+    raw = await fetchCards(needed, (fetched, total) => {
+      if (epoch !== packEpoch) return;
+      if (mode === 'bulk') postPackSession({ phase: 'progress', fetched, total }, gid);
+    });
   } catch {
-    // a rip that landed while this fetch was failing must not auto-commit
-    // against whatever pack comes next — there's no pending pack to honor it.
+    if (epoch !== packEpoch || gate !== packGate) return;
+    packSession = null;
     ripBeforeReady = false;
+    releasePackLock(gate);
+    postPackSession({ phase: 'failed' }, gid);
     if (panel) panel.webview.postMessage({ type: 'fetchFailed' });
     vscode.window.showWarningMessage("⚠️ Couldn't fetch cards right now — check your connection and try again.");
     return;
   }
-  const cards = previewPack(draws, track);
-  // reveal weakest first so the strongest card lands last
-  cards.sort((a, b) => rarityScore(a) - rarityScore(b));
-  pendingPack = { cards, track, competitive };
+  if (epoch !== packEpoch || gate !== packGate) {
+    // abandoned mid-fetch (game switch / panel close). Nothing was spent, but
+    // the cards were already spliced out of BUFFER — hand them back rather
+    // than waste the fetch, unless the game changed (they'd be the wrong
+    // game's cards in the new game's buffer).
+    if (gid === gameId && raw && raw.length) {
+      BUFFER.push(...raw);
+      persistBufferSoon();
+    }
+    return;
+  }
 
-  // 'competitive' isn't sent here — the webview already captured it from the
-  // earlier 'packOpening' message (beginPack), so re-sending it is dead weight.
-  if (panel) panel.webview.postMessage({ type: 'packCards', cards });
-  // warm THIS pack's images right now — they've been shifted out of the buffer,
-  // so they download during the wrapper+rip animation and each reveal's
-  // preload() resolves from cache instead of blocking on a cold fetch.
-  sendPrefetch(cards.map(c => c.image));
-  ensureRefill(); // top the buffer back up immediately so the next pack stays warm too
+  const { packs, leftover } = previewPacksForTrack(raw, track, gid);
+  if (leftover.length) {
+    BUFFER.push(...leftover);
+    persistBufferSoon();
+  }
+  if (!packs.length) {
+    packSession = null;
+    ripBeforeReady = false;
+    releasePackLock(gate);
+    postPackSession({ phase: 'failed' }, gid);
+    if (panel) panel.webview.postMessage({ type: 'fetchFailed' });
+    vscode.window.showWarningMessage("⚠️ Couldn't fetch cards right now — check your connection and try again.");
+    return;
+  }
+  if (packs.length < n) {
+    vscode.window.showWarningMessage(
+      `Opened ${packs.length} of ${n} packs — the rest couldn't be fetched right now.`
+    );
+  }
 
-  // if the player already tore the wrapper open while we were fetching, the
-  // packRipped message arrived before this pack existed — honor it now.
-  if (ripBeforeReady) { ripBeforeReady = false; commitPendingPack(); }
+  packSession.packs = packs;
+  packSession.packCount = packs.length;
+  sendPrefetch(packs.flat().map(c => c.image));
+  ensureRefill();
+
+  if (mode === 'bulk') {
+    const paid = await commitPackSession();
+    // the commit already recorded / released; a Field that now shows another
+    // game (switched during the spend await) must not get this session's result
+    if (gate !== packGate || gid !== gameId) return;
+    if (!paid || !paid.length) {
+      postPackSession({ phase: 'failed' }, gid);
+      if (panel) panel.webview.postMessage({ type: 'fetchFailed' });
+      return;
+    }
+    postPackSession({ phase: 'ready', mode, competitive, packs: paid, autoReveal: false }, gid);
+    return;
+  }
+
+  postPackSession({ phase: 'ready', mode, competitive, packs, autoReveal }, gid);
+  if (ripBeforeReady) { ripBeforeReady = false; await commitPackSession(); }
 }
 
 /** Player ripped the wrapper. Commit now if the pack is ready; otherwise
- *  remember it so doPack commits as soon as the fetch lands (a fast rip can
- *  beat the fetch, and without this the cards/credit would never be recorded). */
+ *  remember it so openPacks commits as soon as the fetch lands (a fast rip
+ *  can beat the fetch, and without this the cards/credit would never be recorded). */
 function onPackRipped() {
-  if (pendingPack) commitPendingPack();
-  else ripBeforeReady = true;
+  if (packSession && packSession.packs && !packSession.committed) commitPackSession();
+  else if (packSession && !packSession.committed) ripBeforeReady = true;
 }
 
-/** Open the pending pack for real — called when the player rips the wrapper.
- *  This is the ONLY place a Competitive credit is spent and the ONLY place a
- *  pack's cards are recorded, so an unopened pack never costs anything. */
-async function commitPendingPack() {
-  if (!pendingPack) return;
-  const { cards, track, competitive } = pendingPack;
-  pendingPack = null;
-  if (competitive) {
-    await github.spendCredit(extCtx);
-    updateStatusBar();
+/** Open the pending session for real. Play mode: called when the wrapper is
+ *  ripped. Bulk mode: called as soon as the fetch lands. This is the ONLY
+ *  place Competitive credits are spent and the ONLY place a pack's cards are
+ *  recorded, so an unopened pack never costs anything.
+ *
+ *  The host lock stays busy until BOTH spendCredits and recordCards finish.
+ *  The session is cleared after those writes so play-mode flipping does not
+ *  block the next open. If spend returns fewer credits than packs, unpaid
+ *  packs go back on the buffer and are not recorded.
+ *
+ *  Cards are recorded under the game the session was opened for
+ *  (session.gameId), not the active game — a switch during the spend await
+ *  must not file them under the other game's key. Never rejects: a failed
+ *  spend/record (async storage write) logs, puts every pack back on the
+ *  buffer, records nothing, and still clears the session + lock in `finally`
+ *  so the economy can't wedge until reload. */
+async function commitPackSession() {
+  if (!packSession || packSession.committed || !packSession.packs) return [];
+  const session = packSession;
+  const { packs, track, competitive, gate, gameId: gid } = session;
+  session.committed = true;
+  session.writing = true;
+
+  // Only hand cards back to BUFFER if it still belongs to this session's
+  // game — after a switch they'd be filed into the other game's buffer.
+  const returnToBuffer = cards => {
+    if (gid !== gameId || !cards.length) return;
+    BUFFER.push(...cards);
+    persistBufferSoon();
+  };
+
+  let paid = [];
+  try {
+    const spent = competitive
+      ? await github.spendCredits(extCtx, packs.length)
+      : packs.length;
+    if (competitive) {
+      updateStatusBar();
+      sendCredits();
+    }
+
+    const settled = settlePackSpend(packs, spent, competitive);
+    paid = settled.paid;
+    if (settled.unpaid.length) {
+      returnToBuffer(settled.unpaid.flat());
+      vscode.window.showWarningMessage(
+        spent <= 0
+          ? 'Could not spend Competitive credits — packs were not recorded.'
+          : `Only ${spent} of ${packs.length} Competitive credits could be spent — unpaid packs were not recorded.`
+      );
+    }
+    if (paid.length) {
+      recordCards(paid.flat(), track, gid);
+      // refresh whatever the Binder is showing (its credit count / "Open N"
+      // label go stale even when it's on the other track or game)
+      if (binderPanel) sendCollection(binderTrack);
+    }
+  } catch (err) {
+    console.error('[ygo-duel] pack commit failed — packs returned to the buffer, nothing recorded:\n' + util.inspect(err, { depth: 10 }));
+    paid = [];
+    returnToBuffer(packs.flat());
+    updateStatusBar(); // show whatever the credit balance really is now
     sendCredits();
+    vscode.window.showWarningMessage(
+      "⚠️ Couldn't open the pack" + (packs.length > 1 ? 's' : '') + " — recording failed, so nothing was added to your collection. Try again."
+    );
+  } finally {
+    if (packSession === session) packSession = null;
+    session.writing = false;
+    releasePackLock(gate);
   }
-  for (const c of cards) recordCollection(c, track);
-  if (binderPanel && binderTrack === track) sendCollection(track);
+  return paid;
 }
 
-/** Throw away an unopened pack — switching games, closing the panel, or
- *  reloading. Costs nothing (no credit was spent, no cards recorded), so the
- *  credit stays on the balance and the player can open another later. */
-function discardPendingPack() {
-  pendingPack = null;
-  ripBeforeReady = false; // a remembered early-rip is moot once the pack is abandoned
+/** Throw away an unopened session — switching games, closing the panel, or
+ *  reloading. Costs nothing if not yet committed. Bumping packEpoch also
+ *  invalidates an in-flight fetch so it cannot commit afterwards.
+ *  A session already in spend+record is left to finish (credits already
+ *  moving) — it records under its own session.gameId and its `finally`
+ *  releases the lock, which is why packGate is NOT bumped here; uncommitted
+ *  packs go back on the buffer. */
+function discardPackSession() {
+  if (packSession && packSession.writing) {
+    packEpoch++;
+    return;
+  }
+  if (packSession && packSession.packs && !packSession.committed) {
+    BUFFER.push(...packSession.packs.flat());
+    persistBufferSoon();
+  }
+  packEpoch++;
+  packGate++;
+  packSession = null;
+  ripBeforeReady = false;
+  packLock = false;
+  lastPackPayload = null;
+  postPackLock(false);
+  if (panel && fieldReady) {
+    lastPackPayload = { phase: 'idle', gameId };
+    panel.webview.postMessage({ type: 'packSession', phase: 'idle' });
+  }
 }
 
 /** Higher = revealed later. New cards get a bump so they land later in a pack,
@@ -500,40 +825,29 @@ function rarityScore(c) {
   return s;
 }
 
-/** Pure state transition: fold one draw into the given col/stats objects and
- *  return progress info. Doesn't touch globalState — recordCollection uses it
- *  against the live collection, previewPack uses it against a throwaway
- *  clone so a sealed pack can be shown without actually being recorded. */
-function applyDraw(col, stats, card) {
-  const id = String(card.id || card.name);
-  const existing = col[id];
-  const isNew = !existing;
-  // store the whole normalized card (whatever fields the game produced) plus
-  // our bookkeeping, so the collection isn't tied to any one game's schema.
-  const entry = existing || {
-    ...card,
-    id,
-    count: 0,
-    firstSeen: Date.now()
-  };
-  entry.count += 1;
-  entry.lastSeen = Date.now();
-  col[id] = entry;
-
-  stats.total += 1;
-
-  return { isNew, count: entry.count, unique: Object.keys(col).length, total: stats.total };
+/** Record one or more draws into the persistent collection in a single write.
+ *  `track` is 'sandbox' (default) or 'competitive' — see collectionKey().
+ *  `gid` is the game the cards belong to (default: the active game); a pack
+ *  session passes the game it was opened for so a switch mid-commit can't
+ *  file its cards under the other game. Returns the last card's progress
+ *  info (used by single draws). */
+function recordCards(cards, track = 'sandbox', gid = gameId) {
+  if (!cards || !cards.length) return undefined;
+  const col = extCtx.globalState.get(collectionKey(track, gid), {});
+  const stats = extCtx.globalState.get(statsKey(track, gid), emptyStats());
+  let rec;
+  for (const c of cards) {
+    // previewed cards carry isNew/unique/total for the reveal UI — don't persist those
+    const { isNew, unique, total, ...rest } = c;
+    rec = applyDraw(col, stats, rest);
+  }
+  extCtx.globalState.update(collectionKey(track, gid), col);
+  extCtx.globalState.update(statsKey(track, gid), stats);
+  return rec;
 }
 
-/** Record a draw into the persistent collection; returns progress info.
- *  `track` is 'sandbox' (default) or 'competitive' — see collectionKey(). */
 function recordCollection(card, track) {
-  const col = extCtx.globalState.get(collectionKey(track), {});
-  const stats = extCtx.globalState.get(statsKey(track), emptyStats());
-  const rec = applyDraw(col, stats, card);
-  extCtx.globalState.update(collectionKey(track), col);
-  extCtx.globalState.update(statsKey(track), stats);
-  return rec;
+  return recordCards([card], track);
 }
 
 /** One-time repair for collections corrupted by the old cross-game buffer race
@@ -683,18 +997,11 @@ async function migrateCardData(onProgress) {
  *  against a throwaway clone of the real collection —
  *  so a still-sealed pack can preview isNew/count/unique/total for the reveal
  *  without writing anything real yet. Actual persistence happens later, in
- *  commitPendingPack(), once the player has ripped the pack open. */
-function previewPack(rawCards, track) {
-  const col = JSON.parse(JSON.stringify(extCtx.globalState.get(collectionKey(track), {})));
-  const stats = JSON.parse(JSON.stringify(extCtx.globalState.get(statsKey(track), emptyStats())));
-  let lastRec;
-  const cards = rawCards.map(card => {
-    lastRec = applyDraw(col, stats, card);
-    return { ...card, isNew: lastRec.isNew, count: lastRec.count };
-  });
-  // show the final tallies steadily through the reveal
-  cards.forEach(c => { c.unique = lastRec.unique; c.total = lastRec.total; });
-  return cards;
+ *  commitPackSession(). `gid` is the session's game (see recordCards). */
+function previewPacksForTrack(rawCards, track, gid = gameId) {
+  const col = JSON.parse(JSON.stringify(extCtx.globalState.get(collectionKey(track, gid), {})));
+  const stats = JSON.parse(JSON.stringify(extCtx.globalState.get(statsKey(track, gid), emptyStats())));
+  return previewPacks(rawCards, col, stats, rarityScore);
 }
 
 /** Open (or reveal) the Binder panel showing the whole collection. Always
@@ -715,13 +1022,14 @@ function openBinder(context) {
   binderPanel.webview.html = renderHtml(binderPanel.webview, 'binder.html');
   binderPanel.webview.onDidReceiveMessage(msg => {
     if (!msg) return;
-    if (msg.type === 'ready') sendCollection(binderTrack);
+    if (msg.type === 'ready') { sendCollection(binderTrack); postPackLock(packLock); }
     else if (msg.type === 'setTrack') { binderTrack = msg.track === 'competitive' ? 'competitive' : 'sandbox'; sendCollection(binderTrack); }
     else if (msg.type === 'setGame') setActiveGame(msg.id);
     else if (msg.type === 'reset') resetCollection(binderTrack);
     else if (msg.type === 'requestDraw') { ensurePanel(context); doDraw(); }
-    else if (msg.type === 'openPack') { ensurePanel(context); doPack('sandbox'); }
-    else if (msg.type === 'openCompetitivePack') { ensurePanel(context); doPack('competitive'); }
+    else if (msg.type === 'openPack') { ensurePanel(context); openPacks('sandbox', 1); }
+    else if (msg.type === 'openCompetitivePack') { ensurePanel(context); openPacks('competitive', 1); }
+    else if (msg.type === 'openPacks') { ensurePanel(context); openPacks(msg.track, msg.count); }
   });
   binderPanel.onDidDispose(() => { binderPanel = null; });
 }
@@ -776,6 +1084,10 @@ const BUFFER = [];
 const BUFFER_TARGET = 18;  // cards to keep ready (a few full packs of headroom)
 const REFILL_AT = 12;      // background top-up once we dip to this (still >= a full pack)
 let refilling = null;
+let refillGoal = BUFFER_TARGET;
+// Cards the active fetchCards() still needs (0 when none is running). Caps how
+// far any refill goal may exceed BUFFER_TARGET — see ensureRefill.
+let fetchNeed = 0;
 
 /** True if a card's art is served from a host this game's CSP allows — i.e. the
  *  card actually belongs to `g` (default: the active game). A card can only ever
@@ -835,11 +1147,11 @@ function persistBufferSoon() {
 }
 
 /** Fetch a batch of raw cards; add any kept ones (deduped by name) to the
- *  buffer. Prefers the adapter's `fetchBatch()` when present — each game
- *  chooses its own batching (e.g. pokemontcg.io fans out a few parallel page
- *  fetches for catalog variety; Yu-Gi-Oh has no batch hook and falls back to
- *  parallel `fetchOne()` bursts against randomcard.php). Either way we avoid
- *  firing `count` parallel single-card lookups at rate-limited APIs.
+ *  buffer. Prefers the adapter's `fetchBatch(count)` when present — each game
+ *  chooses its own batching and pacing (pokemontcg.io fans out a few parallel
+ *  page fetches for catalog variety and ignores `count`; Yu-Gi-Oh runs
+ *  `count` randomcard.php singles in rate-limited chunks). An adapter with no
+ *  batch hook falls back to `count` parallel `fetchOne()` calls.
  *
  *  We deliberately do NOT download the art here. The webview loads each image
  *  URL directly from the CDN (allowed by the CSP) and its own preload() waits
@@ -863,17 +1175,78 @@ async function harvest(count) {
   sendPrefetch();  // newly harvested art can start warming right away
 }
 
-/** Background top-up to BUFFER_TARGET; only one runs at a time. */
-function ensureRefill() {
-  if (refilling) return refilling;
+/** Background top-up; only one harvest loop runs at a time. `target` lets a
+ *  bulk open harvest the remaining cards needed instead of the 1-pack
+ *  BUFFER_TARGET. If a refill is already running at a smaller goal, the
+ *  bulk target raises the in-flight goal (and a follow-up refill covers
+ *  anything still short after the current loop exits).
+ *
+ *  A goal above BUFFER_TARGET is only honoured while a fetch still needs that
+ *  many cards (fetchNeed): the bulk splice loop queues a request on nearly
+ *  every card, so dozens of callbacks pile up behind one in-flight loop with
+ *  goals like 94, 93, 92… — each re-reads the live need when its turn comes,
+ *  so once the fetch has returned they all collapse to BUFFER_TARGET instead
+ *  of starting a fresh 90-card loop. */
+function ensureRefill(target = BUFFER_TARGET) {
+  const goal = liveRefillGoal(target, fetchNeed, BUFFER_TARGET);
+  refillGoal = coalesceRefillGoal(refillGoal, goal, BUFFER_TARGET);
+  if (refilling) {
+    const inflight = refilling;
+    return inflight.then(() => {
+      const live = liveRefillGoal(goal, fetchNeed, BUFFER_TARGET); // the fetch may have progressed or finished by now
+      if (BUFFER.length < live) return ensureRefill(live);
+    });
+  }
   refilling = (async () => {
     let rounds = 0;
-    while (BUFFER.length < BUFFER_TARGET && rounds < 5) {
+    while (BUFFER.length < refillGoal) {
       rounds++;
-      await harvest(BUFFER_TARGET - BUFFER.length + 2);
+      const cap = Math.max(8, Math.ceil(refillGoal / 8) + 6);
+      if (rounds > cap) break;
+      // ask for what's short (+2 for cards keep() will drop), capped per round —
+      // no minimum burst, so a near-full top-up doesn't fire 8 requests
+      await harvest(Math.min(24, Math.max(1, refillGoal - BUFFER.length + 2)));
     }
-  })().catch(() => {}).finally(() => { refilling = null; });
+  })().catch(() => {}).finally(() => {
+    refilling = null;
+    refillGoal = BUFFER_TARGET;
+  });
   return refilling;
+}
+
+/** Pull `n` cards from the buffer, harvesting ahead as needed. Returns
+ *  however many we could get (possibly short on a network/API failure) —
+ *  the caller turns complete packs into a session and puts leftovers back.
+ *  During a bulk fetch the remaining-card count is the refill target, never
+ *  a silent default-18 top-up from the splice loop. */
+async function fetchCards(n, onProgress) {
+  const want = Math.max(0, Math.floor(n));
+  const out = [];
+  while (out.length < want) {
+    const remaining = want - out.length;
+    fetchNeed = remaining; // live need — lets ensureRefill honour a goal this large, and no larger
+    if (BUFFER.length === 0) {
+      await ensureRefill(remaining);
+      if (BUFFER.length === 0) break;
+    }
+    const card = BUFFER.splice(Math.floor(Math.random() * BUFFER.length), 1)[0];
+    out.push(card);
+    if (onProgress && (out.length === want || out.length % PACK_SIZE === 0)) {
+      onProgress(out.length, want);
+    }
+    if (BUFFER.length <= REFILL_AT && out.length < want) {
+      ensureRefill(want - out.length);
+    }
+  }
+  // Fetch done: no refill may target more than BUFFER_TARGET from here on —
+  // callbacks queued behind the in-flight loop re-read fetchNeed (see
+  // ensureRefill), and the loop itself is dropped back to the steady-state
+  // target so it doesn't keep harvesting to a stale bulk count. Only one pack
+  // session runs at a time, so nothing else depends on the raised goal.
+  fetchNeed = 0;
+  if (refilling && refillGoal > BUFFER_TARGET) refillGoal = BUFFER_TARGET;
+  persistBufferSoon();
+  return out;
 }
 
 /** Return a monster: instant from the buffer, else block on a refill burst.
@@ -897,7 +1270,7 @@ async function fetchRandomCard() {
 function deactivate() {
   if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-  discardPendingPack(); // a reload mid-rip just abandons the unopened pack — no credit was spent
+  discardPackSession(); // a reload mid-rip just abandons the unopened pack — no credit was spent
   if (!extCtx) return;
   try {
     const file = cachePath();
