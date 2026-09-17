@@ -972,8 +972,8 @@ async function harvest(count) {
 }
 
 /** Background top-up; only one runs at a time. `target` lets a bulk open
- *  harvest a bigger burst than the steady-state BUFFER_TARGET so 30 packs
- *  aren't 30 sequential 18-card refills. */
+ *  harvest a bigger burst than the steady-state BUFFER_TARGET so a 20-pack
+ *  open isn't 20 sequential 18-card refills. */
 function ensureRefill(target = BUFFER_TARGET) {
   if (refilling) return refilling;
   const goal = Math.max(BUFFER_TARGET, target);

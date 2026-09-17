@@ -8,10 +8,10 @@
  */
 
 const PACK_SIZE = 5;
-/** Hard cap on one bulk open, so a huge credit balance can't stall the host
- *  on a 500-card fetch. Open All of a bigger pile just takes this many and
- *  leaves the rest on the balance. */
-const MAX_BULK_PACKS = 100;
+/** Hard cap on one bulk open. 20 packs = 100 cards — enough to feel like a
+ *  real rip without a long fetch that often dies mid-burst. Open All of a
+ *  bigger pile takes this many and leaves the rest on the balance. */
+const MAX_BULK_PACKS = 20;
 
 /** Turn a requested count ('all' | number) into an actual pack count.
  *  Competitive is clamped to the credit balance; sandbox has no "all"

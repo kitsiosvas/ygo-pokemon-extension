@@ -17,7 +17,7 @@ describe('resolvePackCount', () => {
   it('clamps competitive opens to credits and the bulk cap', () => {
     assert.equal(resolvePackCount(1, 30, true), 1);
     assert.equal(resolvePackCount(10, 7, true), 7);
-    assert.equal(resolvePackCount('all', 30, true), 30);
+    assert.equal(resolvePackCount('all', 30, true), MAX_BULK_PACKS);
     assert.equal(resolvePackCount('all', 0, true), 0);
     assert.equal(resolvePackCount('all', 250, true), MAX_BULK_PACKS);
     assert.equal(resolvePackCount(0, 5, true), 0);
@@ -149,16 +149,15 @@ describe('previewPacks', () => {
     assert.equal(col.y.count, 2);
   });
 
-  it('turns a 30-pack competitive grind into 30 packs of 5 with leftover returned', () => {
-    const raw = Array.from({ length: 152 }, (_, i) => ({ id: 'c' + i, name: 'C' + i, atk: i % 7 }));
-    const n = resolvePackCount('all', 30, true);
-    assert.equal(n, 30);
-    const fetched = raw.slice(0, n * PACK_SIZE + 2); // 152
-    const { packs, leftover } = previewPacks(fetched, {}, { total: 0 }, c => c.atk);
+  it('caps a large competitive pile at MAX_BULK_PACKS and returns leftover cards', () => {
+    const n = resolvePackCount('all', 31, true);
+    assert.equal(n, MAX_BULK_PACKS);
+    const raw = Array.from({ length: n * PACK_SIZE + 2 }, (_, i) => ({ id: 'c' + i, name: 'C' + i, atk: i % 7 }));
+    const { packs, leftover } = previewPacks(raw, {}, { total: 0 }, c => c.atk);
     const summary = summarizePacks(packs);
-    assert.equal(summary.packCount, 30);
-    assert.equal(summary.cardCount, 150);
-    assert.equal(summary.newCount, 150);
+    assert.equal(summary.packCount, 20);
+    assert.equal(summary.cardCount, 100);
+    assert.equal(summary.newCount, 100);
     assert.equal(leftover.length, 2);
     assert.equal(packs.every(p => p.length === PACK_SIZE), true);
   });
