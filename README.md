@@ -49,10 +49,10 @@ prices" below.
    - **Cards: Open Yu-Gi-Oh Field** — play with Yu-Gi-Oh cards
    - **Cards: Open Pokémon Field** — switch to Pokémon (TCG cards)
    - **Cards: Draw a Card!** — draw a random card in the active game (Sandbox)
-  - **Cards: Open a Pack** — rip a free 5-card Sandbox booster (one click: auto-rips and flips through the cards)
+  - **Cards: Open a Pack** — rip a free 5-card Sandbox booster (wrapper auto-rips, then tap each card)
   - **Cards: Open Binder** — open the collection grid for the active game/track
   - **Cards: Open Competitive Pack 🏆** — spend one earned credit on a
-    5-card Competitive booster (disabled/no-ops at 0 credits). Same one-click auto-reveal as Sandbox.
+    5-card Competitive booster (disabled/no-ops at 0 credits). Same auto-rip, tap-each-card flow as Sandbox.
   - **Cards: Open All Competitive Packs 🏆** — spend every earned credit at once
     and show all the cards in a results grid (the 30-pack grind without 150 extra clicks). Confirms first.
   - **Cards: Open Multiple Packs…** — pick Sandbox or Competitive and a count;
@@ -69,15 +69,14 @@ The two "Open … Field" commands pick the **active game**; everything else
 (Draw, Open a Pack, Binder, Reset) operates on whichever game is active.
 Each game keeps its own collection, so they never mix.
 
-### Opening packs (one-click + bulk)
+### Opening packs (single + bulk)
 
 Two separate flows, both from the Field, the Binder, and the Command Palette:
 
-1. **One pack, one click.** Click **Pack** or **Competitive** — the wrapper
-   rips itself and the five cards auto-advance. Tap a card to skip ahead.
-   Credits still spend only when the wrapper actually tears, so closing the
-   panel mid-fetch costs nothing. Set `ygoDuel.packReveal` to `tap` if you
-   want the old tap-to-rip / tap-each-card ceremony.
+1. **One pack.** Click **Pack** or **Competitive** — the wrapper rips itself,
+   then tap each card to reveal the next. Credits still spend only when the
+   wrapper actually tears, so closing the panel mid-fetch costs nothing. Set
+   `ygoDuel.packReveal` to `tap` if you also want to tap to rip the wrapper.
 2. **Open all / open many.** With 2+ Competitive credits, **Open all**
    confirms, spends that many credits, fetches every card, and shows them in
    a scrollable grid (new cards highlighted, grouped by pack). Sandbox has
@@ -138,9 +137,9 @@ whatever image they were caught with — nothing is backfilled retroactively.
   `postMessage` (`draw` / `packSession` / `prefetch` → webview;
   `requestDraw` / `openPacks` / `openBinder` / `ready` → host).
   A pack session has phases `opening` → (`progress`) → `ready` (or `failed`).
-  Mode `play` is one pack (wrapper + auto/tap reveal, commit on rip);
+  Mode `play` is one pack (wrapper auto-rips by default, then tap each card);
   mode `bulk` is 2+ packs (results grid, commit as soon as the fetch lands).
-  Set `ygoDuel.packReveal` to `tap` to restore the old tap-to-rip / tap-each-card ceremony.
+  Set `ygoDuel.packReveal` to `tap` if you also want to tap to rip the wrapper.
 - **Data flow:** a background **buffer** of pre-fetched cards (persisted to
   globalStorage so reloads start warm) → `recordCollection` stores the whole
   normalized card in globalState → payload posted to the webview. The webview

@@ -131,7 +131,7 @@
           "type": "string",
           "enum": ["auto", "tap"],
           "default": "auto",
-          "description": "How a single pack is revealed. auto (default): one click rips the wrapper and flips through the cards without extra taps. tap: original ceremonial flow — tap to rip, then tap each card."
+          "description": "How a single pack's wrapper is opened. auto (default): one click rips the wrapper, then tap each card. tap: tap to rip, then tap each card."
         }
       }
     }

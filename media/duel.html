@@ -469,12 +469,6 @@
   let awaitingRip = false; // pack wrapper is showing, waiting for the rip
   let packDone = false;    // a pack just finished; next tap returns to start
   let credits = 0;         // Competitive pack credits available, from the host
-  let autoTimer = null;    // auto-reveal dwell between cards
-  const AUTO_DWELL_MS = 900;
-
-  function clearAutoTimer() {
-    if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
-  }
 
   function packBusy() {
     return animating || awaitingRip || !!packState;
@@ -608,12 +602,7 @@
     if (!packState || packState.mode === 'bulk') return;
     if (packState.index < packState.cards.length) {
       packInfo.textContent = 'Card ' + packState.index + ' / ' +
-        packState.cards.length +
-        (packState.autoReveal ? '   —   tap to skip ▶' : '   —   tap to reveal next ▶');
-      if (packState.autoReveal) {
-        clearAutoTimer();
-        autoTimer = setTimeout(() => { autoTimer = null; revealNext(); }, AUTO_DWELL_MS);
-      }
+        packState.cards.length + '   —   tap to reveal next ▶';
     } else {
       finishPack();
     }
@@ -630,7 +619,6 @@
 
   // host started a pack session (play = 1 pack with wrapper; bulk = N packs)
   function beginSession(m) {
-    clearAutoTimer();
     hidePackResults();
     // start every session from a clean slate: cancel any lingering reveal
     // animations and clear the transient interaction flags, so a stuck state
@@ -753,7 +741,6 @@
   }
 
   function revealNext() {
-    clearAutoTimer();
     if (!packState || packState.mode === 'bulk' || animating) return;
     if (!packState.cards) {              // ripped before cards arrived
       packState.waiting = true;
@@ -769,7 +756,6 @@
   }
 
   function finishPack() {
-    clearAutoTimer();
     const cards = packState.cards || [];
     const competitive = packState.competitive;
     const newCount = cards.filter(c => c.isNew).length;
@@ -852,7 +838,6 @@
   // or a sealed wrapper waiting to be ripped) and return to idle instead of
   // leaving the panel stuck.
   function handleFetchFailed() {
-    clearAutoTimer();
     hidePackResults();
     [cardWrap, ring, glow, banner, meta].forEach(el => el.getAnimations().forEach(a => a.cancel()));
     packEl.getAnimations().forEach(a => a.cancel());
@@ -865,7 +850,6 @@
 
   // reset everything back to the idle "ready to draw" screen
   function showStartScreen() {
-    clearAutoTimer();
     hidePackResults();
     packEl.style.display = 'none';
     card.innerHTML = '';
@@ -1046,7 +1030,6 @@
     if (animating) return;            // ignore taps mid-animation
     if (awaitingRip) { ripPack(); return; }      // tear the pack open
     if (packState && packState.mode !== 'bulk') {
-      clearAutoTimer();
       revealNext();
       return;
     }
