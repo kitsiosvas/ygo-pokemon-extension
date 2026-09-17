@@ -221,6 +221,7 @@ function Sync-ToDestination {
         @{ From = 'extension.js';      To = 'extension.js' }
         @{ From = 'github.js';         To = 'github.js' }
         @{ From = 'http.js';           To = 'http.js' }
+        @{ From = 'packs.js';          To = 'packs.js' }
         @{ From = 'package.json';      To = 'package.json' }
         @{ From = 'media\duel.html';   To = 'media\duel.html' }
         @{ From = 'media\binder.html'; To = 'media\binder.html' }

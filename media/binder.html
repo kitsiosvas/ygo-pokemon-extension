@@ -182,6 +182,7 @@
     <input id="search" type="text" placeholder="Search…" autocomplete="off">
     <button class="primary" id="drawBtn">⚔️ Draw</button>
     <button id="packBtn">📦 Open Pack</button>
+      <button id="packAllBtn" style="display:none">Open all</button>
     <button class="danger" id="resetBtn">Reset</button>
   </header>
   <div id="grid"></div>
@@ -213,6 +214,7 @@
   const trackToggle = document.getElementById('trackToggle');
   const drawBtn = document.getElementById('drawBtn');
   const packBtn = document.getElementById('packBtn');
+  const packAllBtn = document.getElementById('packAllBtn');
   const resetBtn = document.getElementById('resetBtn');
   let allCards = [];
   let shownCards = []; // the currently rendered (filtered+sorted) list, indexed for the modal
@@ -287,10 +289,14 @@
       packBtn.textContent = '🏆 Open Competitive Pack' + (credits > 0 ? ' (' + credits + ')' : '');
       packBtn.disabled = credits <= 0;
       packBtn.title = credits > 0 ? '' : 'Merge a PR or push to main to earn one';
+      packAllBtn.style.display = credits > 1 ? '' : 'none';
+      packAllBtn.textContent = 'Open all (' + credits + ')';
+      packAllBtn.disabled = credits <= 1;
     } else {
       packBtn.textContent = '📦 Open Pack';
       packBtn.disabled = false;
       packBtn.title = '';
+      packAllBtn.style.display = 'none';
     }
     empty.innerHTML = track === 'competitive'
       ? '🏆 No Competitive cards yet.<br>Merge a PR or push to main to earn your first pack!'
@@ -401,10 +407,14 @@
   packBtn.addEventListener('click', () => {
     if (track === 'competitive') {
       if (credits <= 0) return;
-      vscode.postMessage({ type: 'openCompetitivePack' });
+      vscode.postMessage({ type: 'openPacks', track: 'competitive', count: 1 });
     } else {
-      vscode.postMessage({ type: 'openPack' });
+      vscode.postMessage({ type: 'openPacks', track: 'sandbox', count: 1 });
     }
+  });
+  packAllBtn.addEventListener('click', () => {
+    if (track !== 'competitive' || credits <= 1) return;
+    vscode.postMessage({ type: 'openPacks', track: 'competitive', count: 'all' });
   });
   resetBtn.addEventListener('click',
     () => vscode.postMessage({ type: 'reset' }));
