@@ -57,7 +57,9 @@ prices" below.
     packs at once and show the cards in a results grid. Confirms first; leftover
     credits stay on the balance.
   - **Cards: Open Multiple Packs…** — pick Sandbox or Competitive and a count;
-    2+ packs use the same results grid. Competitive is clamped to your credit balance (max 20 per burst).
+    2+ packs use the same results grid. Competitive is clamped to your credit balance
+    (max 20 per burst) and confirms before spending; Sandbox is free, so 2+ Sandbox
+    packs open immediately with no confirm.
    - **Cards: Set GitHub Server (Competitive Packs)** — switch between
      github.com and an on-site GitHub Enterprise Server, see below
    - **Cards: Set GitHub Token (Competitive Packs)** — one-time setup, see below
@@ -85,8 +87,9 @@ Two separate flows, both from the Field, the Binder, and the Command Palette:
    click to inspect (same popup as the Binder). New cards are highlighted and
    grouped by pack; the header totals the pull's value. Sandbox has
    no credit cap, so use **Cards: Open Multiple Packs…** and pick a count
-   (max 20 per burst). A partial fetch still commits the packs that landed
-   and leaves the rest of your credits.
+   (max 20 per burst) — nothing is spent, so there's no confirm step; only a
+   Competitive bulk open asks first. A partial fetch still commits the packs
+   that landed and leaves the rest of your credits.
 
 ### Real card rarity & prices
 

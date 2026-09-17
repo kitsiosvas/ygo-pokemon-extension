@@ -10,6 +10,8 @@
  * Adapter contract (consumed by extension.js):
  *   api                  string   — endpoint hit by fetchOne
  *   fetchOne()           async    — returns one raw card object from the API
+ *   fetchBatch(count)    async    — optional; returns up to `count` raw cards,
+ *                                   pacing requests however the API needs
  *   keep(raw)            bool     — should this raw card be kept? (filter)
  *   normalize(raw)       object   — map a raw card to our internal shape:
  *                                   { id, name, image, ...displayFields, }
@@ -17,6 +19,7 @@
  *   theme                object   — display config, forwarded to the webviews
  */
 
+const util = require('util');
 const { getJson } = require('../http');
 
 const api = 'https://db.ygoprodeck.com/api/v7/randomcard.php';
@@ -34,6 +37,43 @@ async function fetchOne() {
   const c = json && Array.isArray(json.data) ? json.data[0] : json;
   if (!c || !c.name) throw new Error('unexpected API shape');
   return c;
+}
+
+/* Batch fetch used by the buffer. randomcard.php only ever returns one card,
+ * so a batch is `count` fetchOne() calls — but YGOPRODeck's published limit is
+ * 20 requests/second, with a 1-hour IP block on violation
+ * (https://ygoprodeck.com/api-guide/), and a 20-pack bulk open needs ~170
+ * requests across back-to-back rounds. So the singles run in chunks of
+ * BATCH_CONCURRENCY, and each chunk starts at least BATCH_GAP_MS after the
+ * previous one — tracked at module level so the gap also holds between
+ * consecutive harvest rounds, not just within one call. Any 1 s window then
+ * holds at most two chunk starts (≤ 16 requests), while a 100-card fetch still
+ * lands in roughly 15 s on a healthy network. A failed single is skipped
+ * (logged once per chunk); the rest of the chunk still lands. */
+const BATCH_CONCURRENCY = 8;
+const BATCH_GAP_MS = 600;
+let lastChunkAt = 0;
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+async function fetchBatch(count) {
+  const want = Math.max(1, Math.floor(Number(count) || 0));
+  const out = [];
+  for (let i = 0; i < want; i += BATCH_CONCURRENCY) {
+    const wait = lastChunkAt + BATCH_GAP_MS - Date.now();
+    if (wait > 0) await sleep(wait);
+    lastChunkAt = Date.now();
+    const n = Math.min(BATCH_CONCURRENCY, want - i);
+    let failed = 0, firstErr = null;
+    const chunk = await Promise.all(Array.from({ length: n }, () =>
+      fetchOne().catch(err => { failed++; if (!firstErr) firstErr = err; return null; })
+    ));
+    if (failed) {
+      // see harvest() in extension.js for why the error is inspected to a string first
+      console.error('[ygo-duel] ' + failed + ' of ' + n + ' Yu-Gi-Oh card fetches failed:\n' + util.inspect(firstErr, { depth: 10 }));
+    }
+    for (const c of chunk) if (c) out.push(c);
+  }
+  return out;
 }
 
 /** Look up one exact, already-known card by its YGOPRODeck id — used to
@@ -123,4 +163,4 @@ const theme = {
   packAspectRatio: '657 / 1181'
 };
 
-module.exports = { api, fetchOne, fetchById, keep, normalize, power, theme };
+module.exports = { api, fetchOne, fetchBatch, fetchById, keep, normalize, power, theme };

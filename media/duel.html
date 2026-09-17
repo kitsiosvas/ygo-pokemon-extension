@@ -565,6 +565,18 @@
   let credits = 0;         // Competitive pack credits available, from the host
   let openingRequested = false; // locked the instant we send openPacks, before packSession arrives
 
+  // The pending settle for the card currently rising (set by draw()). A new
+  // session or a fetch failure cancels it, so neither the 1400ms backstop
+  // timer nor a late onfinish from the previous card can run onCardSettled
+  // against state that no longer belongs to that card.
+  let pendingSettle = null; // { timer, cancel }
+  function cancelPendingSettle() {
+    if (!pendingSettle) return;
+    clearTimeout(pendingSettle.timer);
+    pendingSettle.cancel(); // marks it settled so a late onfinish is a no-op too
+    pendingSettle = null;
+  }
+
   function packBusy() {
     return openingRequested || animating || awaitingRip || !!packState;
   }
@@ -677,9 +689,13 @@
     // — field tap, pack buttons — is gated on `animating`, so a missed onfinish
     // would wedge the whole panel. The timeout is the safety net.
     let settled = false;
-    const settle = () => { if (settled) return; settled = true; startIdle(); onCardSettled(); };
+    const settle = () => { if (settled) return; settled = true; pendingSettle = null; startIdle(); onCardSettled(); };
+    cancelPendingSettle(); // a previous card still rising is superseded by this one
     rise.onfinish = settle;
-    setTimeout(settle, 1400); // > rise duration; a no-op if onfinish already ran
+    pendingSettle = {
+      timer: setTimeout(settle, 1400), // > rise duration; a no-op if onfinish already ran
+      cancel: () => { settled = true; }
+    };
 
     setTimeout(impact, 660);
   }
@@ -689,6 +705,9 @@
   async function restoreCard(c) {
     if (animating || packState || awaitingRip || packDone) return;
     await preload(c.imageData || c.image);
+    // a session can start during that preload (the host replays an in-flight
+    // pack right after 'ready') — don't paint over its wrapper
+    if (animating || packState || awaitingRip || packDone) return;
     render(c);
     updateStats(c);
     hint.style.display = 'none';
@@ -701,7 +720,8 @@
   // called once a card has fully risen into place
   function onCardSettled() {
     animating = false;
-    if (!packState || packState.mode === 'bulk') return;
+    // no cards yet = a fresh session whose fetch hasn't landed; nothing to advance
+    if (!packState || packState.mode === 'bulk' || !packState.cards) return;
     if (packState.index < packState.cards.length) {
       packInfo.textContent = 'Card ' + packState.index + ' / ' +
         packState.cards.length + '   —   tap to reveal next ▶';
@@ -727,6 +747,7 @@
     // animations and clear the transient interaction flags, so a stuck state
     // from a previous pack can never carry over into this one.
     [cardWrap, ring, glow, banner, meta].forEach(el => el.getAnimations().forEach(a => a.cancel()));
+    cancelPendingSettle();
     if (idleAnim) { idleAnim.cancel(); idleAnim = null; }
     animating = false;
     awaitingRip = false;
@@ -1021,6 +1042,7 @@
     hidePackResults();
     [cardWrap, ring, glow, banner, meta].forEach(el => el.getAnimations().forEach(a => a.cancel()));
     packEl.getAnimations().forEach(a => a.cancel());
+    cancelPendingSettle();
     animating = false;
     awaitingRip = false;
     packDone = false;
@@ -1169,13 +1191,8 @@
     }
     else if (m.type === 'packLock') {
       openingRequested = !!m.busy;
-      if (!m.busy && packState && !packState.packs && !packState.cards && !awaitingRip) {
-        // confirm cancelled (or lock released) before a session landed
-      }
       updateCompBtn();
     }
-    else if (m.type === 'packOpening') beginSession({ mode: 'play', competitive: m.competitive, autoReveal: false, packCount: 1 });
-    else if (m.type === 'packCards') onSessionReady({ packs: [m.cards || []], autoReveal: false, competitive: packState && packState.competitive });
     else if (m.type === 'prefetch') prefetch(m.urls || []);
     else if (m.type === 'restore') restoreCard(m.card);
     else if (m.type === 'credits') { credits = m.credits || 0; updateCompBtn(); }

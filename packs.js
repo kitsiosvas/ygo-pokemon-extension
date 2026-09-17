@@ -155,6 +155,19 @@ function coalesceRefillGoal(inFlightGoal, requested, bufferTarget) {
   );
 }
 
+/** The goal a refill request may actually use, given what the active fetch
+ *  still needs right now (`liveNeed`, 0 when no fetch is running). A bulk
+ *  goal is only honoured while a fetch still needs that many cards: it shrinks
+ *  to the live need as the fetch progresses and to `bufferTarget` once the
+ *  fetch is done — so a request captured mid-fetch (or a callback queued
+ *  behind an in-flight refill) can never start a fresh 90-card loop after the
+ *  fetch has returned. Never raises a goal above what was asked for. */
+function liveRefillGoal(requestedGoal, liveNeed, bufferTarget) {
+  const goal = Math.max(0, Math.floor(Number(requestedGoal) || 0));
+  const need = Math.max(0, Math.floor(Number(liveNeed) || 0));
+  return refillTarget(Math.min(goal, need), bufferTarget);
+}
+
 module.exports = {
   PACK_SIZE,
   MAX_BULK_PACKS,
@@ -169,5 +182,6 @@ module.exports = {
   splitPaidPacks,
   settlePackSpend,
   refillTarget,
-  coalesceRefillGoal
+  coalesceRefillGoal,
+  liveRefillGoal
 };

@@ -17,7 +17,8 @@ const {
   splitPaidPacks,
   settlePackSpend,
   refillTarget,
-  coalesceRefillGoal
+  coalesceRefillGoal,
+  liveRefillGoal
 } = require('./packs');
 
 describe('resolvePackCount', () => {
@@ -63,7 +64,7 @@ describe('canStartPackOpen', () => {
     assert.equal(canStartPackOpen({ committed: false }, true), false);
     assert.equal(canStartPackOpen({ committed: true, writing: true }, false), false); // spend
     assert.equal(canStartPackOpen({ committed: true, writing: true }, true), false);
-    // `{ confirmed: true }` on openPacks must not skip this lock
+    // every entry point (Field, Binder, palette, bulk) goes through this same lock
     assert.equal(canStartPackOpen(null, true), false);
   });
 
@@ -105,6 +106,22 @@ describe('refillTarget', () => {
     assert.equal(coalesceRefillGoal(18, 100, 18), 100);
     assert.equal(coalesceRefillGoal(100, 18, 18), 100);
     assert.equal(coalesceRefillGoal(0, 40, 18), 40);
+  });
+});
+
+describe('liveRefillGoal', () => {
+  it('honours a bulk goal only while the fetch still needs that many cards', () => {
+    assert.equal(liveRefillGoal(94, 94, 18), 94);  // asked mid-fetch, fetch still needs 94
+    assert.equal(liveRefillGoal(94, 40, 18), 40);  // fetch has progressed: shrink to what is left
+    assert.equal(liveRefillGoal(94, 0, 18), 18);   // fetch done: back to the steady target
+    assert.equal(liveRefillGoal(93, 0, 18), 18);   // …for every stale queued callback, not just the first
+  });
+
+  it('never raises a goal above what was asked for, and never below the steady target', () => {
+    assert.equal(liveRefillGoal(18, 94, 18), 18);
+    assert.equal(liveRefillGoal(18, 0, 18), 18);
+    assert.equal(liveRefillGoal(5, 94, 18), 18);
+    assert.equal(liveRefillGoal(undefined, undefined, 18), 18);
   });
 });
 
@@ -205,6 +222,31 @@ describe('Field / Binder pack UI hooks', () => {
     assert.match(host, /ensureRefill\(remaining\)/);
     assert.match(host, /ensureRefill\(want - out\.length\)/);
     assert.doesNotMatch(host, /remaining\), 40/);
+    // a refill goal above BUFFER_TARGET is clamped to the live fetch need on
+    // every path (fresh call and callback chained behind an in-flight loop)
+    assert.match(host, /fetchNeed = remaining/);
+    assert.match(host, /fetchNeed = 0/);
+    assert.equal((host.match(/liveRefillGoal\(/g) || []).length, 2, 'both ensureRefill paths clamp');
+  });
+
+  it('commit always releases the lock and records under the session\'s own game', () => {
+    const commitFn = host.slice(host.indexOf('async function commitPackSession'), host.indexOf('function discardPackSession'));
+    const finallyAt = commitFn.indexOf('} finally {');
+    assert.ok(finallyAt > 0, 'commit must have a finally block');
+    const finallyBlock = commitFn.slice(finallyAt);
+    assert.match(finallyBlock, /packSession = null/);
+    assert.match(finallyBlock, /session\.writing = false/);
+    assert.match(finallyBlock, /releasePackLock\(gate\)/);
+    assert.match(commitFn, /recordCards\(paid\.flat\(\), track, gid\)/);
+    assert.match(host, /gameId: gid,/);
+    assert.match(host, /function recordCards\(cards, track = 'sandbox', gid = gameId\)/);
+    assert.match(host, /function postPackSession\(payload, gid = gameId\)/);
+    assert.doesNotMatch(host, /confirmAndOpenPacks|opts\.confirmed/);
+  });
+
+  it('Field cancels a stale settle timer and no longer speaks the legacy pack messages', () => {
+    assert.match(html, /cancelPendingSettle\(\)/);
+    assert.doesNotMatch(html, /'packOpening'|'packCards'/);
   });
 });
 
