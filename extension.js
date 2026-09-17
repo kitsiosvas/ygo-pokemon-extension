@@ -5,6 +5,7 @@ const util = require('util');
 const github = require('./github');
 const {
   PACK_SIZE,
+  MAX_BULK_PACKS,
   applyDraw,
   previewPacks,
   resolvePackCount
@@ -280,7 +281,8 @@ function renderHtml(webview, file) {
     .replace(/{{THEME}}/g, JSON.stringify(game.theme))
     .replace(/{{GAMES}}/g, JSON.stringify(games))
     .replace(/{{ACTIVE_GAME}}/g, gameId)
-    .replace(/{{PACK_IMG}}/g, packImageUri(webview));
+    .replace(/{{PACK_IMG}}/g, packImageUri(webview))
+    .replace(/{{MAX_BULK_PACKS}}/g, String(MAX_BULK_PACKS));
 }
 
 /** If a real booster-pack image for the active game is bundled in media/

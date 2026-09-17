@@ -77,8 +77,8 @@ Two separate flows, both from the Field, the Binder, and the Command Palette:
    then tap each card to reveal the next. Credits still spend only when the
    wrapper actually tears, so closing the panel mid-fetch costs nothing. Set
    `ygoDuel.packReveal` to `tap` if you also want to tap to rip the wrapper.
-2. **Open all / open many.** With 2+ Competitive credits, **Open all**
-   confirms, spends that many credits, fetches every card, and shows them in
+2. **Open all / open many.** With 2+ Competitive credits, **Open N**
+   (N is `min(credits, 20)`) confirms, spends that many credits, fetches every card, and shows them in
    a scrollable grid (new cards highlighted, grouped by pack). Sandbox has
    no credit cap, so use **Cards: Open Multiple Packs…** and pick a count
    (max 20 per burst). A partial fetch still commits the packs that landed

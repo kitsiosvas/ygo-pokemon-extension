@@ -347,7 +347,7 @@
       <div id="binderBtn">📖 Binder</div>
       <div id="packBtn">📦 Pack</div>
       <div id="compBtn"></div>
-      <button type="button" id="compAllBtn">Open all</button>
+      <button type="button" id="compAllBtn">Open 20</button>
     </div>
     <div id="packInfo"></div>
     <div id="hint"></div>
@@ -361,6 +361,7 @@
   // available games + which is active, for the in-panel switcher
   const GAMES = {{GAMES}};
   const ACTIVE_GAME = "{{ACTIVE_GAME}}";
+  const MAX_BULK_PACKS = {{MAX_BULK_PACKS}};
   // One fixed reveal look for every card — no per-rarity variation. Rarity and
   // price are surfaced as text (in the meta line and the binder), not as tiers.
   const REVEAL = { chars: ['⭐','✨','💫','🌟','💥'], particles: 40, flash: 0.85, flashMs: 420 };
@@ -481,10 +482,14 @@
     compBtn.title = disabled
       ? 'Merge a PR or push to main to earn a Competitive pack'
       : credits + ' pack' + (credits > 1 ? 's' : '') + ' available — click to open one';
-    const showAll = credits > 1;
-    compAllBtn.style.display = showAll ? 'inline-block' : 'none';
-    compAllBtn.textContent = 'Open all (' + credits + ')';
-    compAllBtn.title = 'Open all ' + credits + ' Competitive packs at once';
+    const burst = Math.min(credits, MAX_BULK_PACKS);
+    const showBurst = burst > 1;
+    compAllBtn.style.display = showBurst ? 'inline-block' : 'none';
+    compAllBtn.textContent = 'Open ' + burst;
+    compAllBtn.title = credits > burst
+      ? 'Open ' + burst + ' of ' + credits + ' Competitive packs (max per burst). ' +
+        (credits - burst) + ' remain.'
+      : 'Open all ' + burst + ' Competitive packs';
   }
   updateCompBtn();
 

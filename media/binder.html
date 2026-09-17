@@ -182,7 +182,7 @@
     <input id="search" type="text" placeholder="Search…" autocomplete="off">
     <button class="primary" id="drawBtn">⚔️ Draw</button>
     <button id="packBtn">📦 Open Pack</button>
-      <button id="packAllBtn" style="display:none">Open all</button>
+      <button id="packAllBtn" style="display:none">Open 20</button>
     <button class="danger" id="resetBtn">Reset</button>
   </header>
   <div id="grid"></div>
@@ -205,6 +205,7 @@
   // available games + which is active, for the in-panel switcher (mirrors duel.html)
   const GAMES = {{GAMES}};
   const ACTIVE_GAME = "{{ACTIVE_GAME}}";
+  const MAX_BULK_PACKS = {{MAX_BULK_PACKS}};
   const vscode = acquireVsCodeApi();
   const grid = document.getElementById('grid');
   const empty = document.getElementById('empty');
@@ -289,10 +290,14 @@
       packBtn.textContent = '🏆 Open Competitive Pack' + (credits > 0 ? ' (' + credits + ')' : '');
       packBtn.disabled = credits <= 0;
       packBtn.title = credits > 0 ? '' : 'Merge a PR or push to main to earn one';
-    const showAll = credits > 1;
-    packAllBtn.style.display = showAll ? 'inline-block' : 'none';
-      packAllBtn.textContent = 'Open all (' + credits + ')';
-      packAllBtn.disabled = credits <= 1;
+      const burst = Math.min(credits, MAX_BULK_PACKS);
+      packAllBtn.style.display = burst > 1 ? 'inline-block' : 'none';
+      packAllBtn.textContent = 'Open ' + burst;
+      packAllBtn.disabled = burst <= 1;
+      packAllBtn.title = credits > burst
+        ? 'Open ' + burst + ' of ' + credits + ' Competitive packs (max per burst). ' +
+          (credits - burst) + ' remain.'
+        : 'Open all ' + burst + ' Competitive packs';
     } else {
       packBtn.textContent = '📦 Open Pack';
       packBtn.disabled = false;

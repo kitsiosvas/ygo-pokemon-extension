@@ -77,12 +77,14 @@ describe('Field / Binder pack UI hooks', () => {
     assert.match(html, /compAllBtn/);
     assert.match(html, /packResults/);
     assert.match(html, /count: 'all'/);
-    assert.match(html, /autoReveal/);
+    assert.match(html, /Open ' \+ burst/);
+    assert.match(html, /MAX_BULK_PACKS/);
   });
 
   it('Binder can open one competitive pack or all of them', () => {
     assert.match(binder, /packAllBtn/);
     assert.match(binder, /count: 'all'/);
+    assert.match(binder, /Open ' \+ burst/);
   });
 });
 
