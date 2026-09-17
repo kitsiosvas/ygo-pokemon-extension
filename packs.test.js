@@ -96,6 +96,9 @@ describe('Field / Binder pack UI hooks', () => {
     assert.match(html, /r-name/);
     assert.match(html, /data-idx/);
     assert.match(html, /cardPriceLabel/);
+    assert.match(html, /#bulkModal \{[^}]*position: fixed/);
+    assert.match(html, /#bulkModalCard \{[^}]*user-select: text/);
+    assert.match(html, /\.mname, \.mtype, \.mdesc, \.mmeta, \.mprice, \.mstats/);
   });
 
   it('Binder can open one competitive pack or a bulk burst', () => {

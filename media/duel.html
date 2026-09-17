@@ -280,6 +280,7 @@
     background: #0c0918;
     overflow: auto;
     padding: 52px 16px 28px;
+    user-select: text; -webkit-user-select: text;
   }
   #packResults.show { display: flex; }
   .results-head {
@@ -334,9 +335,11 @@
     font-size: 12px; font-weight: 600; margin-top: 7px; line-height: 1.2;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
     overflow: hidden; min-height: 29px;
+    user-select: text; -webkit-user-select: text; cursor: text;
   }
   .r-price {
     margin-top: 4px; font-size: 12px; font-weight: 700; color: #ffe07a;
+    user-select: text; -webkit-user-select: text; cursor: text;
   }
   .r-price.none { color: #8a80b8; font-weight: 600; }
   .r-new {
@@ -346,14 +349,17 @@
     padding: 2px 6px; border-radius: 999px;
   }
 
-  /* Inspect popup — same layout as the Binder enlarge modal */
+  /* Inspect popup — same layout as the Binder enlarge modal.
+     Lives on <body> (not #field) so Field's user-select:none and click-to-draw
+     cannot swallow drags, text selection, or the close button. */
   #bulkModal {
-    position: absolute; inset: 0; background: rgba(6,4,14,.82);
+    position: fixed; inset: 0; background: rgba(6,4,14,.82);
     display: flex; align-items: center; justify-content: center;
-    z-index: 50; opacity: 0; visibility: hidden;
+    z-index: 100; opacity: 0; visibility: hidden; pointer-events: none;
     transition: opacity .18s ease, visibility .18s ease;
+    user-select: text; -webkit-user-select: text;
   }
-  #bulkModal.show { opacity: 1; visibility: visible; }
+  #bulkModal.show { opacity: 1; visibility: visible; pointer-events: auto; }
   #bulkModalCard {
     position: relative; width: min(360px, 86vw); max-height: 88vh;
     background: linear-gradient(160deg, #241c40, #14101f);
@@ -361,12 +367,15 @@
     padding: 20px; overflow-y: auto;
     box-shadow: 0 30px 70px rgba(0,0,0,.7);
     transform: scale(.9) translateY(10px); transition: transform .18s ease;
+    pointer-events: auto; cursor: auto;
+    user-select: text; -webkit-user-select: text;
   }
   #bulkModal.show #bulkModalCard { transform: scale(1) translateY(0); }
   #bulkModalClose {
     position: absolute; top: 10px; right: 10px; width: 30px; height: 30px;
     border-radius: 50%; border: 1px solid #5b4fa0; background: rgba(60,48,110,.8);
     color: #e6dcff; font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
+    z-index: 2; pointer-events: auto;
   }
   #bulkModalClose:hover { background: rgba(84,66,150,.95); }
   .menlarge {
@@ -382,6 +391,9 @@
     background-size: 250% 250%; animation: mshimmer 3.2s linear infinite;
   }
   @keyframes mshimmer { to { background-position: -250% 0; } }
+  .mname, .mtype, .mdesc, .mmeta, .mprice, .mstats {
+    user-select: text; -webkit-user-select: text; cursor: text;
+  }
   .mname { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
   .mtype { font-size: 13px; color: #b9aef0; margin-bottom: 10px; }
   .mstats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -418,17 +430,17 @@
     <div id="packInfo"></div>
     <div id="hint"></div>
     <div id="packResults"></div>
-    <div id="bulkModal">
-      <div id="bulkModalCard">
-        <button type="button" id="bulkModalClose" title="Close">✕</button>
-        <div class="menlarge" id="bulkModalArt"></div>
-        <div class="mname" id="bulkModalName"></div>
-        <div class="mtype" id="bulkModalType"></div>
-        <div class="mstats" id="bulkModalStats"></div>
-        <div class="mprice" id="bulkModalPrice"></div>
-        <div class="mdesc" id="bulkModalDesc"></div>
-        <div class="mmeta" id="bulkModalMeta"></div>
-      </div>
+  </div>
+  <div id="bulkModal">
+    <div id="bulkModalCard">
+      <button type="button" id="bulkModalClose" title="Close">✕</button>
+      <div class="menlarge" id="bulkModalArt"></div>
+      <div class="mname" id="bulkModalName"></div>
+      <div class="mtype" id="bulkModalType"></div>
+      <div class="mstats" id="bulkModalStats"></div>
+      <div class="mprice" id="bulkModalPrice"></div>
+      <div class="mdesc" id="bulkModalDesc"></div>
+      <div class="mmeta" id="bulkModalMeta"></div>
     </div>
   </div>
 
@@ -1177,6 +1189,9 @@
     const cell = e.target.closest('.r-card');
     if (!cell) return;
     e.stopPropagation();
+    // A drag that selected name/price text should copy, not open the popup.
+    const sel = window.getSelection && String(window.getSelection());
+    if (sel && e.target.closest('.r-name, .r-price')) return;
     const c = bulkShownCards[Number(cell.dataset.idx)];
     if (c) openBulkModal(c);
   });
@@ -1189,10 +1204,16 @@
     const c = bulkShownCards[Number(cell.dataset.idx)];
     if (c) openBulkModal(c);
   });
-  bulkModalCard.addEventListener('click', e => e.stopPropagation());
+  function stopFieldClicks(e) { e.stopPropagation(); }
+  bulkModalCard.addEventListener('pointerdown', stopFieldClicks);
+  bulkModalCard.addEventListener('mousedown', stopFieldClicks);
+  bulkModalCard.addEventListener('click', stopFieldClicks);
+  bulkModal.addEventListener('pointerdown', stopFieldClicks);
   bulkModal.addEventListener('click', e => {
     e.stopPropagation();
-    closeBulkModal();
+    const sel = window.getSelection && String(window.getSelection());
+    if (sel) return; // finishing a text-select drag must not dismiss
+    if (e.target === bulkModal) closeBulkModal();
   });
   document.getElementById('bulkModalClose').addEventListener('click', e => {
     e.stopPropagation();
