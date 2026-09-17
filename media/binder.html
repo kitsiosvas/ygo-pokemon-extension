@@ -289,7 +289,8 @@
       packBtn.textContent = '🏆 Open Competitive Pack' + (credits > 0 ? ' (' + credits + ')' : '');
       packBtn.disabled = credits <= 0;
       packBtn.title = credits > 0 ? '' : 'Merge a PR or push to main to earn one';
-      packAllBtn.style.display = credits > 1 ? '' : 'none';
+    const showAll = credits > 1;
+    packAllBtn.style.display = showAll ? 'inline-block' : 'none';
       packAllBtn.textContent = 'Open all (' + credits + ')';
       packAllBtn.disabled = credits <= 1;
     } else {

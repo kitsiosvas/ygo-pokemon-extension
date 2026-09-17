@@ -234,7 +234,7 @@
 
   /* pack progress: "Card 2 / 5" top-center */
   #packInfo {
-    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
     z-index: 9; font: 700 clamp(11px,2.3vw,15px) "Trebuchet MS", sans-serif;
     color: #ffe07a; letter-spacing: 1px; opacity: 0;
     text-shadow: 0 1px 6px #000;
@@ -488,7 +488,7 @@
       ? 'Merge a PR or push to main to earn a Competitive pack'
       : credits + ' pack' + (credits > 1 ? 's' : '') + ' available — click to open one';
     const showAll = credits > 1;
-    compAllBtn.style.display = showAll ? '' : 'none';
+    compAllBtn.style.display = showAll ? 'inline-block' : 'none';
     compAllBtn.textContent = 'Open all (' + credits + ')';
     compAllBtn.title = 'Open all ' + credits + ' Competitive packs at once';
   }
@@ -691,11 +691,6 @@
     packEl.innerHTML = PACK_MARKUP;
 
     packEl.style.display = 'block';
-    const intro = packEl.animate([
-      { transform: 'translate(-50%,-50%) translateY(45%) scale(.4) rotate(-8deg)', opacity: 0 },
-      { transform: 'translate(-50%,-50%) scale(1) rotate(0deg)', opacity: 1 }
-    ], { duration: 520, easing: 'cubic-bezier(.2,.9,.25,1.3)', fill: 'forwards' });
-
     awaitingRip = true;
     packInfo.style.opacity = 1;
     packInfo.textContent = packState.autoReveal
@@ -703,15 +698,22 @@
       : (packState.competitive ? '🏆 Tap to rip open your Competitive pack!' : '📦 Tap to rip open the pack!');
 
     // auto-reveal: tear the wrapper as soon as the intro animation finishes
-    // (ripPack already handles cards that haven't arrived yet).
+    // (ripPack already handles cards that haven't arrived yet). Schedule the
+    // timeout FIRST so a missing/throwing Web Animation can't skip auto-rip.
     let introDone = false;
     const afterIntro = () => {
       if (introDone) return;
       introDone = true;
       if (packState && packState.autoReveal && awaitingRip) ripPack();
     };
-    intro.onfinish = afterIntro;
     setTimeout(afterIntro, 750);
+    try {
+      const intro = packEl.animate([
+        { transform: 'translate(-50%,-50%) translateY(45%) scale(.4) rotate(-8deg)', opacity: 0 },
+        { transform: 'translate(-50%,-50%) scale(1) rotate(0deg)', opacity: 1 }
+      ], { duration: 520, easing: 'cubic-bezier(.2,.9,.25,1.3)', fill: 'forwards' });
+      if (intro) intro.onfinish = afterIntro;
+    } catch (_) { /* timeout is the backstop */ }
   }
 
   // tear the wrapper apart, then start revealing the cards
@@ -721,26 +723,6 @@
     animating = true;
     vscode.postMessage({ type: 'packRipped' }); // tell the host it's safe to commit these cards now
 
-    const top = packEl.querySelector('.pack-top');
-    const bot = packEl.querySelector('.pack-bottom');
-
-    flash.animate([{ opacity: .9 }, { opacity: 0 }], { duration: 420, easing: 'ease-out' });
-    shake();
-    burst();
-
-    top.animate([
-      { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
-      { transform: 'translateY(-190%) rotate(-18deg)', opacity: 0 }
-    ], { duration: 620, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards' });
-
-    const b = bot.animate([
-      { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
-      { transform: 'translateY(150%) rotate(12deg)', opacity: 0 }
-    ], { duration: 680, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards', delay: 90 });
-
-    // same onfinish-reliability guard as draw(): clear `animating` and start
-    // the reveal exactly once, with a timeout backstop so a missed onfinish
-    // can't leave the pack sealed forever.
     let torn = false;
     const afterTear = () => {
       if (torn) return; torn = true;
@@ -748,8 +730,26 @@
       animating = false;
       revealNext();
     };
-    b.onfinish = afterTear;
-    setTimeout(afterTear, 1100); // > delay + duration
+    setTimeout(afterTear, 1100); // > delay + duration; backstop if onfinish never fires
+
+    const top = packEl.querySelector('.pack-top');
+    const bot = packEl.querySelector('.pack-bottom');
+    try {
+      flash.animate([{ opacity: .9 }, { opacity: 0 }], { duration: 420, easing: 'ease-out' });
+      shake();
+      burst();
+      if (top) top.animate([
+        { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
+        { transform: 'translateY(-190%) rotate(-18deg)', opacity: 0 }
+      ], { duration: 620, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards' });
+      if (bot) {
+        const b = bot.animate([
+          { transform: 'translateY(0) rotate(0deg)', opacity: 1 },
+          { transform: 'translateY(150%) rotate(12deg)', opacity: 0 }
+        ], { duration: 680, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards', delay: 90 });
+        if (b) b.onfinish = afterTear;
+      }
+    } catch (_) { /* timeout is the backstop */ }
   }
 
   function revealNext() {
