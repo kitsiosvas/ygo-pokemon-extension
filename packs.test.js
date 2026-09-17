@@ -10,7 +10,8 @@ const {
   chunkIntoPacks,
   applyDraw,
   previewPacks,
-  summarizePacks
+  summarizePacks,
+  isPackSessionBusy
 } = require('./packs');
 
 describe('resolvePackCount', () => {
@@ -30,6 +31,14 @@ describe('resolvePackCount', () => {
     assert.equal(resolvePackCount(999, 0, false), MAX_BULK_PACKS);
     assert.equal(resolvePackCount('all', 0, false), 0);
     assert.equal(resolvePackCount(undefined, 0, false), 1);
+  });
+});
+
+describe('isPackSessionBusy', () => {
+  it('blocks only an uncommitted in-flight session', () => {
+    assert.equal(isPackSessionBusy(null), false);
+    assert.equal(isPackSessionBusy({ committed: false }), true);
+    assert.equal(isPackSessionBusy({ committed: true }), false);
   });
 });
 

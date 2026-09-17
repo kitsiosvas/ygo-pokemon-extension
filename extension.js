@@ -8,7 +8,8 @@ const {
   MAX_BULK_PACKS,
   applyDraw,
   previewPacks,
-  resolvePackCount
+  resolvePackCount,
+  isPackSessionBusy
 } = require('./packs');
 
 // Available game definitions (data adapter + theme). Add a game by dropping a
@@ -523,7 +524,7 @@ async function openPacks(track = 'sandbox', count = 1, opts = {}) {
     );
     if (choice !== 'Open') return;
   }
-  if (packSession) {
+  if (isPackSessionBusy(packSession)) {
     vscode.window.showInformationMessage('A pack is already opening — finish it first.');
     return;
   }
@@ -603,6 +604,7 @@ async function commitPackSession() {
   if (!packSession || packSession.committed || !packSession.packs) return;
   const { packs, track, competitive } = packSession;
   packSession.committed = true;
+  packSession = null; // host is done; the Field may still be flipping cards
   const cards = packs.flat();
   if (competitive) {
     await github.spendCredits(extCtx, packs.length);

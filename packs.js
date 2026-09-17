@@ -103,6 +103,13 @@ function summarizePacks(packs) {
   };
 }
 
+/** True while a session is still fetching or waiting to be ripped. A
+ *  committed play pack may still be on screen, but the host is done with it
+ *  and the next open is allowed. */
+function isPackSessionBusy(session) {
+  return !!(session && !session.committed);
+}
+
 module.exports = {
   PACK_SIZE,
   MAX_BULK_PACKS,
@@ -110,5 +117,6 @@ module.exports = {
   chunkIntoPacks,
   applyDraw,
   previewPacks,
-  summarizePacks
+  summarizePacks,
+  isPackSessionBusy
 };
