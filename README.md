@@ -53,8 +53,9 @@ prices" below.
   - **Cards: Open Binder** — open the collection grid for the active game/track
   - **Cards: Open Competitive Pack 🏆** — spend one earned credit on a
     5-card Competitive booster (disabled/no-ops at 0 credits). Same auto-rip, tap-each-card flow as Sandbox.
-  - **Cards: Open All Competitive Packs 🏆** — spend every earned credit at once
-    and show all the cards in a results grid (the 30-pack grind without 150 extra clicks). Confirms first.
+  - **Cards: Open Bulk Competitive Packs 🏆** — open up to 20 earned Competitive
+    packs at once and show the cards in a results grid. Confirms first; leftover
+    credits stay on the balance.
   - **Cards: Open Multiple Packs…** — pick Sandbox or Competitive and a count;
     2+ packs use the same results grid. Competitive is clamped to your credit balance (max 20 per burst).
    - **Cards: Set GitHub Server (Competitive Packs)** — switch between
@@ -77,7 +78,7 @@ Two separate flows, both from the Field, the Binder, and the Command Palette:
    then tap each card to reveal the next. Credits still spend only when the
    wrapper actually tears, so closing the panel mid-fetch costs nothing. Set
    `ygoDuel.packReveal` to `tap` if you also want to tap to rip the wrapper.
-2. **Open all / open many.** With 2+ Competitive credits, **Open N**
+2. **Bulk / open many.** With 2+ Competitive credits, **Open N**
    (N is `min(credits, 20)`) confirms, spends that many credits, fetches every card, and shows them in
    a scrollable grid (new cards highlighted, grouped by pack). Sandbox has
    no credit cap, so use **Cards: Open Multiple Packs…** and pick a count

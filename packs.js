@@ -9,7 +9,7 @@
 
 const PACK_SIZE = 5;
 /** Hard cap on one bulk open. 20 packs = 100 cards — enough to feel like a
- *  real rip without a long fetch that often dies mid-burst. Open All of a
+ *  real rip without a long fetch that often dies mid-burst. A bulk open of a
  *  bigger pile takes this many and leaves the rest on the balance. */
 const MAX_BULK_PACKS = 20;
 

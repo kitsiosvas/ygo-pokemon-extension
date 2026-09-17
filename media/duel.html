@@ -196,7 +196,7 @@
     box-shadow: 0 0 12px rgba(255,170,40,.5);
   }
 
-  /* Top-left actions — flex so Open All can appear without hardcoded offsets */
+  /* Top-left actions — flex so the bulk Open N button can appear without hardcoded offsets */
   #topLeft {
     position: absolute; top: 8px; left: 12px; z-index: 17;
     display: flex; flex-wrap: wrap; gap: 6px; max-width: 58%;
@@ -489,7 +489,7 @@
     compAllBtn.title = credits > burst
       ? 'Open ' + burst + ' of ' + credits + ' Competitive packs (max per burst). ' +
         (credits - burst) + ' remain.'
-      : 'Open all ' + burst + ' Competitive packs';
+      : 'Open ' + burst + ' Competitive packs';
   }
   updateCompBtn();
 

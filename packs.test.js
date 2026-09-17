@@ -79,6 +79,8 @@ describe('applyDraw', () => {
 
 const html = fs.readFileSync(path.join(__dirname, 'media', 'duel.html'), 'utf8');
 const binder = fs.readFileSync(path.join(__dirname, 'media', 'binder.html'), 'utf8');
+const manifest = fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8');
+const host = fs.readFileSync(path.join(__dirname, 'extension.js'), 'utf8');
 
 describe('Field / Binder pack UI hooks', () => {
   it('Field speaks the packSession protocol and has bulk-open controls', () => {
@@ -90,10 +92,18 @@ describe('Field / Binder pack UI hooks', () => {
     assert.match(html, /MAX_BULK_PACKS/);
   });
 
-  it('Binder can open one competitive pack or all of them', () => {
+  it('Binder can open one competitive pack or a bulk burst', () => {
     assert.match(binder, /packAllBtn/);
     assert.match(binder, /count: 'all'/);
     assert.match(binder, /Open ' \+ burst/);
+  });
+
+  it('Actions tree and command palette say bulk, not all', () => {
+    assert.match(host, /Open Bulk Competitive Packs/);
+    assert.match(host, /Open up to 20 earned Competitive packs at once/);
+    assert.doesNotMatch(host, /Open All Competitive Packs/);
+    assert.match(manifest, /Cards: Open Bulk Competitive Packs/);
+    assert.doesNotMatch(manifest, /Cards: Open All Competitive Packs/);
   });
 });
 

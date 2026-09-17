@@ -112,7 +112,7 @@ class DuelMenuProvider {
       new DuelMenuItem('Draw a Card',              'ygoDuel.draw',                'arrow-right',    'Draw a random card'),
       new DuelMenuItem('Open a Pack',              'ygoDuel.openPack',            'package',        'Open a free booster pack'),
       new DuelMenuItem('Open Competitive Pack',    'ygoDuel.openCompetitivePack', 'star',           'Open a Competitive pack (requires earned credits)'),
-      new DuelMenuItem('Open All Competitive Packs','ygoDuel.openAllCompetitivePacks', 'star-full', 'Open every earned Competitive pack at once'),
+      new DuelMenuItem('Open Bulk Competitive Packs','ygoDuel.openAllCompetitivePacks', 'star-full', 'Open up to 20 earned Competitive packs at once'),
       new DuelMenuItem('Open Binder',              'ygoDuel.openBinder',          'book',           'View your full card collection'),
       new DuelMenuItem('Check for Competitive Activity', 'ygoDuel.checkMerges',   'github',         'Check GitHub for new merges and direct-to-main commits'),
 
@@ -446,11 +446,11 @@ function bulkConfirmMessage(n, available, competitive) {
   if (!competitive) {
     return `Open ${n} packs? ${cards} cards will be added to your Sandbox collection.`;
   }
-  const of = n < available ? ` ${n} of ${available}` : ` all ${n}`;
+  const of = n < available ? ` ${n} of ${available}` : ` ${n}`;
   return `Open${of} Competitive packs? ${cards} cards will be added to your Competitive collection and ${n} credit${n === 1 ? '' : 's'} will be spent.`;
 }
 
-/** Command-palette / Open All entry: confirm competitive bulk, then open. */
+/** Command-palette / bulk competitive entry: confirm, then open up to the cap. */
 async function confirmAndOpenPacks(track, count, context) {
   const competitive = track === 'competitive';
   const credits = competitive ? github.getCredits(extCtx) : 0;
