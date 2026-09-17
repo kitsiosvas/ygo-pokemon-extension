@@ -80,7 +80,9 @@ Two separate flows, both from the Field, the Binder, and the Command Palette:
    `ygoDuel.packReveal` to `tap` if you also want to tap to rip the wrapper.
 2. **Bulk / open many.** With 2+ Competitive credits, **Open N**
    (N is `min(credits, 20)`) confirms, spends that many credits, fetches every card, and shows them in
-   a scrollable grid (new cards highlighted, grouped by pack). Sandbox has
+   a scrollable Binder-style grid — name, rarity, and market price on each card,
+   click to inspect (same popup as the Binder). New cards are highlighted and
+   grouped by pack; the header totals the pull's value. Sandbox has
    no credit cap, so use **Cards: Open Multiple Packs…** and pick a count
    (max 20 per burst). A partial fetch still commits the packs that landed
    and leaves the rest of your credits.

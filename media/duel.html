@@ -272,7 +272,7 @@
   .pack-top    { clip-path: inset(0 0 50% 0 round 14px 14px 0 0); }   /* top 50% slice */
   .pack-bottom { clip-path: inset(49% 0 0 0 round 0 0 14px 14px); }   /* bottom 51% (1% overlap) */
 
-  /* Bulk-open results — scrollable overlay so 30 packs of 5 don't need a click each */
+  /* Bulk-open results — Binder-style cells (name + price, click to inspect) */
   #packResults {
     display: none;
     position: absolute; inset: 0; z-index: 16;
@@ -307,27 +307,93 @@
   }
   .results-row {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 16px;
   }
   .r-card {
-    position: relative; aspect-ratio: 59/86; border-radius: 8px;
-    overflow: hidden; background: #1b1530; border: 1px solid #3a3068;
+    position: relative; background: rgba(30,24,54,.6);
+    border: 1px solid #3a3068; border-radius: 12px; padding: 8px;
+    cursor: pointer;
+    transition: transform .12s ease, box-shadow .12s ease;
   }
-  .r-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .r-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+  .r-card:focus { outline: 2px solid #ffcf3f; outline-offset: 2px; }
   .r-card.new { border-color: #ffcf3f; box-shadow: 0 0 12px rgba(255,180,40,.45); }
-  .r-fallback {
-    position: absolute; inset: 0; display: flex; align-items: center;
-    justify-content: center; padding: 6px; text-align: center;
-    font: 600 10px/1.2 "Segoe UI", sans-serif; color: #e6dcff;
+  .r-thumb {
+    position: relative; aspect-ratio: 59/86; border-radius: 8px; overflow: hidden;
+    background: radial-gradient(circle,#3a2f5c,#1c1733);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 48px;
   }
+  .r-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .r-fallback {
+    padding: 6px; text-align: center;
+    font: 600 12px/1.2 "Segoe UI", sans-serif; color: #e6dcff;
+  }
+  .r-name {
+    font-size: 12px; font-weight: 600; margin-top: 7px; line-height: 1.2;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; min-height: 29px;
+  }
+  .r-price {
+    margin-top: 4px; font-size: 12px; font-weight: 700; color: #ffe07a;
+  }
+  .r-price.none { color: #8a80b8; font-weight: 600; }
   .r-new {
-    position: absolute; top: 4px; left: 4px;
+    position: absolute; top: 6px; left: 6px;
     font: 800 9px "Trebuchet MS", sans-serif;
     background: linear-gradient(135deg,#ffcf3f,#ff7a00); color: #3a1c00;
     padding: 2px 6px; border-radius: 999px;
   }
-</style>
+
+  /* Inspect popup — same layout as the Binder enlarge modal */
+  #bulkModal {
+    position: absolute; inset: 0; background: rgba(6,4,14,.82);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50; opacity: 0; visibility: hidden;
+    transition: opacity .18s ease, visibility .18s ease;
+  }
+  #bulkModal.show { opacity: 1; visibility: visible; }
+  #bulkModalCard {
+    position: relative; width: min(360px, 86vw); max-height: 88vh;
+    background: linear-gradient(160deg, #241c40, #14101f);
+    border: 1px solid #4a3f82; border-radius: 16px;
+    padding: 20px; overflow-y: auto;
+    box-shadow: 0 30px 70px rgba(0,0,0,.7);
+    transform: scale(.9) translateY(10px); transition: transform .18s ease;
+  }
+  #bulkModal.show #bulkModalCard { transform: scale(1) translateY(0); }
+  #bulkModalClose {
+    position: absolute; top: 10px; right: 10px; width: 30px; height: 30px;
+    border-radius: 50%; border: 1px solid #5b4fa0; background: rgba(60,48,110,.8);
+    color: #e6dcff; font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
+  }
+  #bulkModalClose:hover { background: rgba(84,66,150,.95); }
+  .menlarge {
+    position: relative; aspect-ratio: 59/86; border-radius: 12px; overflow: hidden;
+    background: radial-gradient(circle,#3a2f5c,#1c1733);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 90px; margin-bottom: 14px;
+  }
+  .menlarge img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .menlarge .mholo {
+    position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen; opacity: .55;
+    background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.5) 48%, transparent 66%);
+    background-size: 250% 250%; animation: mshimmer 3.2s linear infinite;
+  }
+  @keyframes mshimmer { to { background-position: -250% 0; } }
+  .mname { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .mtype { font-size: 13px; color: #b9aef0; margin-bottom: 10px; }
+  .mstats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .mstats span {
+    font-size: 12px; background: rgba(50,40,90,.5); border: 1px solid #453a7a;
+    border-radius: 8px; padding: 4px 9px;
+  }
+  .mstats span b { color: #ffe07a; }
+  .mdesc { font-size: 12.5px; line-height: 1.5; color: #cfc4ff; margin-bottom: 10px; white-space: pre-wrap; }
+  .mmeta { font-size: 12px; color: #8a80b8; }
+  .mprice { font-size: 16px; font-weight: 800; color: #ffe07a; margin: 8px 0 10px; }
+  .mprice.none { color: #8a80b8; font-weight: 600; font-size: 13px; }</style>
 </head>
 <body>
   <div id="field">
@@ -352,6 +418,18 @@
     <div id="packInfo"></div>
     <div id="hint"></div>
     <div id="packResults"></div>
+    <div id="bulkModal">
+      <div id="bulkModalCard">
+        <button type="button" id="bulkModalClose" title="Close">✕</button>
+        <div class="menlarge" id="bulkModalArt"></div>
+        <div class="mname" id="bulkModalName"></div>
+        <div class="mtype" id="bulkModalType"></div>
+        <div class="mstats" id="bulkModalStats"></div>
+        <div class="mprice" id="bulkModalPrice"></div>
+        <div class="mdesc" id="bulkModalDesc"></div>
+        <div class="mmeta" id="bulkModalMeta"></div>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -388,7 +466,10 @@
   const packInfo = document.getElementById('packInfo');
   const packEl   = document.getElementById('pack');
   const packResults = document.getElementById('packResults');
+  const bulkModal = document.getElementById('bulkModal');
+  const bulkModalCard = document.getElementById('bulkModalCard');
   const gameToggle = document.getElementById('gameToggle');
+  let bulkShownCards = []; // cards currently in the bulk results grid, indexed for the inspect popup
 
   // A full booster pack drawn as SVG (crisp at any size, no external assets).
   // Rendered once per half; each half's overflow+clip reveals its own slice.
@@ -770,7 +851,59 @@
     packInfo.style.opacity = 1;
   }
 
+  function money(n) {
+    return '$' + Number(n).toFixed(2);
+  }
+
+  function cardPriceLabel(c) {
+    return c && c.price != null && Number.isFinite(Number(c.price))
+      ? money(c.price)
+      : '';
+  }
+
+  function pullValue(cards) {
+    return (cards || []).reduce((s, c) => s + (Number(c && c.price) || 0), 0);
+  }
+
+  function closeBulkModal() {
+    bulkModal.classList.remove('show');
+  }
+
+  function openBulkModal(c) {
+    const art = document.getElementById('bulkModalArt');
+    const zoomArt = c.imageFull || c.image;
+    art.innerHTML = zoomArt
+      ? '<img src="' + esc(zoomArt) + '" alt=""><div class="mholo"></div>'
+      : esc(c.emoji || '🃏') + '<div class="mholo"></div>';
+
+    document.getElementById('bulkModalName').textContent = c.name || '???';
+
+    const icon = ATTR_ICON[c[THEME.attrKey]] || '';
+    document.getElementById('bulkModalType').textContent =
+      [c.type, icon].filter(Boolean).join('   ');
+
+    document.getElementById('bulkModalStats').innerHTML = (THEME.stats || [])
+      .filter(s => c[s.key] != null)
+      .map(s => '<span>' + esc(s.label) + ' <b>' + esc(c[s.key]) + '</b></span>')
+      .join('');
+
+    const priceEl = document.getElementById('bulkModalPrice');
+    const price = cardPriceLabel(c);
+    priceEl.textContent = price || 'No market price';
+    priceEl.classList.toggle('none', !price);
+
+    document.getElementById('bulkModalDesc').textContent = c.desc || '';
+
+    document.getElementById('bulkModalMeta').textContent =
+      (c.isNew ? 'NEW' : 'Owned ×' + (c.count || 1)) +
+      (c.rarity ? '  ·  ' + c.rarity : '');
+
+    bulkModal.classList.add('show');
+  }
+
   function hidePackResults() {
+    closeBulkModal();
+    bulkShownCards = [];
     packResults.classList.remove('show');
     packResults.innerHTML = '';
   }
@@ -791,6 +924,7 @@
     const list = packs || [];
     const cards = list.flat();
     const newCount = cards.filter(c => c.isNew).length;
+    const value = pullValue(cards);
     packEl.style.display = 'none';
     awaitingRip = false;
     animating = false;
@@ -798,6 +932,8 @@
     if (cards.length) updateStats(cards[cards.length - 1]);
     packInfo.style.opacity = 0;
     hint.style.display = 'none';
+    closeBulkModal();
+    bulkShownCards = [];
 
     const title = (packState.competitive ? '🏆 ' : '📦 ') +
       list.length + ' pack' + (list.length > 1 ? 's' : '') + ' opened';
@@ -805,7 +941,8 @@
       '<div class="results-head">' +
         '<div>' +
           '<div class="results-title">' + title + '</div>' +
-          '<div class="results-sub">' + newCount + ' new  ·  ' + cards.length + ' cards</div>' +
+          '<div class="results-sub">' + newCount + ' new  ·  ' + cards.length +
+            ' cards  ·  ' + money(value) + '</div>' +
         '</div>' +
         '<button type="button" id="resultsDone">Done</button>' +
       '</div>' +
@@ -814,16 +951,23 @@
           '<div class="results-pack-label">Pack ' + (i + 1) + '</div>' +
           '<div class="results-row">' +
             pack.map(c => {
+              const idx = bulkShownCards.length;
+              bulkShownCards.push(c);
               const art = c.image
                 ? '<img loading="lazy" src="' + esc(c.image) + '" alt="">'
-                : '<div class="r-fallback">' + esc(c.name || '') + '</div>';
-              const tip = esc(c.name || '') +
-                (c.rarity ? ' · ' + esc(c.rarity) : '') +
-                (c.price != null ? ' · $' + c.price.toFixed(2) : '');
-              return '<div class="r-card' + (c.isNew ? ' new' : '') + '" title="' + tip + '">' +
-                art +
-                (c.isNew ? '<span class="r-new">NEW</span>' : '') +
-                '</div>';
+                : '<div class="r-fallback">' + esc(c.emoji || '🃏') + '</div>';
+              const name = esc(c.name || '???') +
+                (c.rarity ? ' (' + esc(c.rarity) + ')' : '');
+              const price = cardPriceLabel(c);
+              return '<div class="r-card' + (c.isNew ? ' new' : '') +
+                '" data-idx="' + idx + '" role="button" tabindex="0">' +
+                '<div class="r-thumb">' + art +
+                  (c.isNew ? '<span class="r-new">NEW</span>' : '') +
+                '</div>' +
+                '<div class="r-name">' + name + '</div>' +
+                '<div class="r-price' + (price ? '' : ' none') + '">' +
+                  (price || '—') + '</div>' +
+              '</div>';
             }).join('') +
           '</div>' +
         '</div>'
@@ -1029,8 +1173,38 @@
     if (idleAnim) hidden ? idleAnim.pause() : idleAnim.play();
   });
 
+  packResults.addEventListener('click', e => {
+    const cell = e.target.closest('.r-card');
+    if (!cell) return;
+    e.stopPropagation();
+    const c = bulkShownCards[Number(cell.dataset.idx)];
+    if (c) openBulkModal(c);
+  });
+  packResults.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const cell = e.target.closest('.r-card');
+    if (!cell) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const c = bulkShownCards[Number(cell.dataset.idx)];
+    if (c) openBulkModal(c);
+  });
+  bulkModalCard.addEventListener('click', e => e.stopPropagation());
+  bulkModal.addEventListener('click', e => {
+    e.stopPropagation();
+    closeBulkModal();
+  });
+  document.getElementById('bulkModalClose').addEventListener('click', e => {
+    e.stopPropagation();
+    closeBulkModal();
+  });
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeBulkModal();
+  });
+
   // click the field to draw a real card (asks the extension to fetch one)
   field.addEventListener('click', () => {
+    if (bulkModal.classList.contains('show')) return;
     if (packResults.classList.contains('show')) return; // Done button dismisses bulk results
     if (animating) return;            // ignore taps mid-animation
     if (awaitingRip) { ripPack(); return; }      // tear the pack open
