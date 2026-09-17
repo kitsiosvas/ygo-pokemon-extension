@@ -114,6 +114,12 @@ describe('Field / Binder pack UI hooks', () => {
     assert.match(manifest, /Cards: Open Bulk Competitive Packs/);
     assert.doesNotMatch(manifest, /Cards: Open All Competitive Packs/);
   });
+
+  it('single-pack wrapper waits for a tap by default', () => {
+    const cfg = JSON.parse(manifest).contributes.configuration.properties['ygoDuel.packReveal'];
+    assert.equal(cfg.default, 'tap');
+    assert.deepEqual(cfg.enum, ['auto', 'tap']);
+  });
 });
 
 describe('previewPacks', () => {

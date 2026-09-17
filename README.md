@@ -49,10 +49,10 @@ prices" below.
    - **Cards: Open Yu-Gi-Oh Field** — play with Yu-Gi-Oh cards
    - **Cards: Open Pokémon Field** — switch to Pokémon (TCG cards)
    - **Cards: Draw a Card!** — draw a random card in the active game (Sandbox)
-  - **Cards: Open a Pack** — rip a free 5-card Sandbox booster (wrapper auto-rips, then tap each card)
+  - **Cards: Open a Pack** — a free 5-card Sandbox booster (tap to rip the wrapper, then tap each card)
   - **Cards: Open Binder** — open the collection grid for the active game/track
   - **Cards: Open Competitive Pack 🏆** — spend one earned credit on a
-    5-card Competitive booster (disabled/no-ops at 0 credits). Same auto-rip, tap-each-card flow as Sandbox.
+    5-card Competitive booster (disabled/no-ops at 0 credits). Same tap-to-rip, tap-each-card flow as Sandbox.
   - **Cards: Open Bulk Competitive Packs 🏆** — open up to 20 earned Competitive
     packs at once and show the cards in a results grid. Confirms first; leftover
     credits stay on the balance.
@@ -74,10 +74,11 @@ Each game keeps its own collection, so they never mix.
 
 Two separate flows, both from the Field, the Binder, and the Command Palette:
 
-1. **One pack.** Click **Pack** or **Competitive** — the wrapper rips itself,
-   then tap each card to reveal the next. Credits still spend only when the
-   wrapper actually tears, so closing the panel mid-fetch costs nothing. Set
-   `ygoDuel.packReveal` to `tap` if you also want to tap to rip the wrapper.
+1. **One pack.** Click **Pack** or **Competitive** — the sealed wrapper lands,
+   tap it to rip, then tap each card to reveal the next. Credits still spend
+   only when the wrapper actually tears, so closing the panel mid-fetch costs
+   nothing. Set `ygoDuel.packReveal` to `auto` if you want the wrapper to rip
+   itself as soon as it appears.
 2. **Bulk / open many.** With 2+ Competitive credits, **Open N**
    (N is `min(credits, 20)`) confirms, spends that many credits, fetches every card, and shows them in
    a scrollable Binder-style grid — name, rarity, and market price on each card,
@@ -140,9 +141,9 @@ whatever image they were caught with — nothing is backfilled retroactively.
   `postMessage` (`draw` / `packSession` / `prefetch` → webview;
   `requestDraw` / `openPacks` / `openBinder` / `ready` → host).
   A pack session has phases `opening` → (`progress`) → `ready` (or `failed`).
-  Mode `play` is one pack (wrapper auto-rips by default, then tap each card);
+  Mode `play` is one pack (tap the wrapper to rip, then tap each card);
   mode `bulk` is 2+ packs (results grid, commit as soon as the fetch lands).
-  Set `ygoDuel.packReveal` to `tap` if you also want to tap to rip the wrapper.
+  Set `ygoDuel.packReveal` to `auto` if you want the wrapper to rip itself.
 - **Data flow:** a background **buffer** of pre-fetched cards (persisted to
   globalStorage so reloads start warm) → `recordCollection` stores the whole
   normalized card in globalState → payload posted to the webview. The webview

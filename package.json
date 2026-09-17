@@ -130,8 +130,8 @@
         "ygoDuel.packReveal": {
           "type": "string",
           "enum": ["auto", "tap"],
-          "default": "auto",
-          "description": "How a single pack's wrapper is opened. auto (default): one click rips the wrapper, then tap each card. tap: tap to rip, then tap each card."
+          "default": "tap",
+          "description": "How a single pack's wrapper is opened. tap (default): the pack appears, then tap to rip, then tap each card. auto: the wrapper rips itself after it lands, then tap each card."
         }
       }
     }
