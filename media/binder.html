@@ -217,6 +217,7 @@
   const packBtn = document.getElementById('packBtn');
   const packAllBtn = document.getElementById('packAllBtn');
   const resetBtn = document.getElementById('resetBtn');
+  let openingRequested = false;
   let allCards = [];
   let shownCards = []; // the currently rendered (filtered+sorted) list, indexed for the modal
   let track = 'sandbox';   // which collection is showing: 'sandbox' | 'competitive'
@@ -288,19 +289,19 @@
     resetBtn.textContent = 'Reset ' + (track === 'competitive' ? 'Competitive' : 'Sandbox');
     if (track === 'competitive') {
       packBtn.textContent = '🏆 Open Competitive Pack' + (credits > 0 ? ' (' + credits + ')' : '');
-      packBtn.disabled = credits <= 0;
+      packBtn.disabled = openingRequested || credits <= 0;
       packBtn.title = credits > 0 ? '' : 'Merge a PR or push to main to earn one';
       const burst = Math.min(credits, MAX_BULK_PACKS);
       packAllBtn.style.display = burst > 1 ? 'inline-block' : 'none';
       packAllBtn.textContent = 'Open ' + burst;
-      packAllBtn.disabled = burst <= 1;
+      packAllBtn.disabled = openingRequested || burst <= 1;
       packAllBtn.title = credits > burst
         ? 'Open ' + burst + ' of ' + credits + ' Competitive packs (max per burst). ' +
           (credits - burst) + ' remain.'
         : 'Open ' + burst + ' Competitive packs';
     } else {
       packBtn.textContent = '📦 Open Pack';
-      packBtn.disabled = false;
+      packBtn.disabled = openingRequested;
       packBtn.title = '';
       packAllBtn.style.display = 'none';
     }
@@ -393,7 +394,13 @@
 
   window.addEventListener('message', e => {
     const m = e.data;
-    if (!m || m.type !== 'collection') return;
+    if (!m) return;
+    if (m.type === 'packLock') {
+      openingRequested = !!m.busy;
+      updateTrackUI();
+      return;
+    }
+    if (m.type !== 'collection') return;
     track = m.track === 'competitive' ? 'competitive' : 'sandbox';
     credits = m.credits || 0;
     allCards = m.cards || [];
@@ -411,15 +418,22 @@
   drawBtn.addEventListener('click',
     () => vscode.postMessage({ type: 'requestDraw' }));
   packBtn.addEventListener('click', () => {
+    if (openingRequested) return;
     if (track === 'competitive') {
       if (credits <= 0) return;
+      openingRequested = true;
+      updateTrackUI();
       vscode.postMessage({ type: 'openPacks', track: 'competitive', count: 1 });
     } else {
+      openingRequested = true;
+      updateTrackUI();
       vscode.postMessage({ type: 'openPacks', track: 'sandbox', count: 1 });
     }
   });
   packAllBtn.addEventListener('click', () => {
-    if (track !== 'competitive' || credits <= 1) return;
+    if (openingRequested || track !== 'competitive' || credits <= 1) return;
+    openingRequested = true;
+    updateTrackUI();
     vscode.postMessage({ type: 'openPacks', track: 'competitive', count: 'all' });
   });
   resetBtn.addEventListener('click',

@@ -215,14 +215,14 @@
   #packBtn {
     color: #ffe6a8; background: rgba(70,50,20,.75); border-color: #a8791f;
   }
-  #packBtn:hover { background: rgba(110,80,24,.9); }
+  #packBtn:hover:not(.disabled) { background: rgba(110,80,24,.9); }
   #compBtn, #compAllBtn {
     color: #ffe680; background: rgba(80,60,10,.75); border-color: #c99a2f;
   }
   #compBtn:hover:not(.disabled), #compAllBtn:hover:not(.disabled) {
     background: rgba(120,90,20,.9);
   }
-  #compBtn.disabled, #compAllBtn.disabled { opacity: .45; cursor: default; }
+  #compBtn.disabled, #compAllBtn.disabled, #packBtn.disabled { opacity: .45; cursor: default; }
   #compAllBtn { display: none; }
 
   /* Gold treatment for a Competitive pack's reveal — same animation, just a
@@ -563,22 +563,26 @@
   let awaitingRip = false; // pack wrapper is showing, waiting for the rip
   let packDone = false;    // a pack just finished; next tap returns to start
   let credits = 0;         // Competitive pack credits available, from the host
+  let openingRequested = false; // locked the instant we send openPacks, before packSession arrives
 
   function packBusy() {
-    return animating || awaitingRip || !!packState;
+    return openingRequested || animating || awaitingRip || !!packState;
   }
 
   function updateCompBtn() {
-    const disabled = credits <= 0;
+    const busy = packBusy();
+    packBtn.classList.toggle('disabled', busy);
+    const noCredit = credits <= 0;
     compBtn.textContent = '🏆 Competitive' + (credits > 0 ? ' (' + credits + ')' : '');
-    compBtn.classList.toggle('disabled', disabled);
-    compBtn.title = disabled
+    compBtn.classList.toggle('disabled', busy || noCredit);
+    compBtn.title = noCredit
       ? 'Merge a PR or push to main to earn a Competitive pack'
       : credits + ' pack' + (credits > 1 ? 's' : '') + ' available — click to open one';
     const burst = Math.min(credits, MAX_BULK_PACKS);
     const showBurst = burst > 1;
     compAllBtn.style.display = showBurst ? 'inline-block' : 'none';
     compAllBtn.textContent = 'Open ' + burst;
+    compAllBtn.classList.toggle('disabled', busy || burst <= 1);
     compAllBtn.title = credits > burst
       ? 'Open ' + burst + ' of ' + credits + ' Competitive packs (max per burst). ' +
         (credits - burst) + ' remain.'
@@ -717,6 +721,7 @@
 
   // host started a pack session (play = 1 pack with wrapper; bulk = N packs)
   function beginSession(m) {
+    openingRequested = false;
     hidePackResults();
     // start every session from a clean slate: cancel any lingering reveal
     // animations and clear the transient interaction flags, so a stuck state
@@ -739,6 +744,7 @@
     document.body.classList.toggle('competitive-pack', !!m.competitive);
     if (packState.mode === 'bulk') showBulkOpening();
     else showPackWrapper();
+    updateCompBtn();
   }
 
   function onSessionProgress(m) {
@@ -750,6 +756,16 @@
   }
 
   function onSessionReady(m) {
+    if (!packState) {
+      // opening was dropped (Field wasn't listening yet) — recover so play
+      // is still rippable and bulk results still show.
+      beginSession({
+        mode: m.mode === 'bulk' || (m.packs && m.packs.length > 1) ? 'bulk' : 'play',
+        competitive: m.competitive,
+        autoReveal: m.autoReveal,
+        packCount: (m.packs && m.packs.length) || m.packCount || 1
+      });
+    }
     if (!packState) return;
     packState.autoReveal = !!m.autoReveal;
     packState.packs = m.packs || [];
@@ -861,6 +877,7 @@
     packDone = true;    // next tap goes back to the start screen
     packInfo.textContent = (competitive ? '🏆 ' : '📦 ') + newCount + ' new  —  tap to return';
     packInfo.style.opacity = 1;
+    updateCompBtn();
   }
 
   function money(n) {
@@ -991,6 +1008,7 @@
       packState = null;
       packDone = false;
       showStartScreen();
+      updateCompBtn();
     });
   }
 
@@ -999,6 +1017,7 @@
   // or a sealed wrapper waiting to be ripped) and return to idle instead of
   // leaving the panel stuck.
   function handleFetchFailed() {
+    openingRequested = false;
     hidePackResults();
     [cardWrap, ring, glow, banner, meta].forEach(el => el.getAnimations().forEach(a => a.cancel()));
     packEl.getAnimations().forEach(a => a.cancel());
@@ -1007,6 +1026,7 @@
     packDone = false;
     packState = null;
     showStartScreen();
+    updateCompBtn();
   }
 
   // reset everything back to the idle "ready to draw" screen
@@ -1108,6 +1128,15 @@
 
   const vscode = acquireVsCodeApi();
 
+  function requestOpenPacks(track, count) {
+    if (packBusy()) return false;
+    if (track === 'competitive' && credits <= 0) return false;
+    openingRequested = true;
+    updateCompBtn();
+    vscode.postMessage({ type: 'openPacks', track: track, count: count });
+    return true;
+  }
+
   document.getElementById('topLeft').addEventListener('click', e => e.stopPropagation());
 
   // Warm the browser cache for cards that are queued up in the extension's
@@ -1132,6 +1161,18 @@
       else if (m.phase === 'progress') onSessionProgress(m);
       else if (m.phase === 'ready') onSessionReady(m);
       else if (m.phase === 'failed') handleFetchFailed();
+      else if (m.phase === 'idle') {
+        openingRequested = false;
+        updateCompBtn();
+        if (packState && !packState.packs && !packState.cards) handleFetchFailed();
+      }
+    }
+    else if (m.type === 'packLock') {
+      openingRequested = !!m.busy;
+      if (!m.busy && packState && !packState.packs && !packState.cards && !awaitingRip) {
+        // confirm cancelled (or lock released) before a session landed
+      }
+      updateCompBtn();
     }
     else if (m.type === 'packOpening') beginSession({ mode: 'play', competitive: m.competitive, autoReveal: false, packCount: 1 });
     else if (m.type === 'packCards') onSessionReady({ packs: [m.cards || []], autoReveal: false, competitive: packState && packState.competitive });
@@ -1151,20 +1192,18 @@
 
   packBtn.addEventListener('click', e => {
     e.stopPropagation();
-    if (packBusy()) return;
-    vscode.postMessage({ type: 'openPacks', track: 'sandbox', count: 1 });
+    requestOpenPacks('sandbox', 1);
   });
 
   compBtn.addEventListener('click', e => {
     e.stopPropagation();
-    if (packBusy() || credits <= 0) return;
-    vscode.postMessage({ type: 'openPacks', track: 'competitive', count: 1 });
+    requestOpenPacks('competitive', 1);
   });
 
   compAllBtn.addEventListener('click', e => {
     e.stopPropagation();
-    if (packBusy() || credits <= 1) return;
-    vscode.postMessage({ type: 'openPacks', track: 'competitive', count: 'all' });
+    if (credits <= 1) return;
+    requestOpenPacks('competitive', 'all');
   });
 
   // build the game switcher; clicking another game asks the extension to swap

@@ -103,11 +103,56 @@ function summarizePacks(packs) {
   };
 }
 
-/** True while a session is still fetching or waiting to be ripped. A
- *  committed play pack may still be on screen, but the host is done with it
- *  and the next open is allowed. */
+/** True while a session is still fetching, waiting to be ripped, or writing
+ *  (spend + record). A committed play pack that has finished writing may
+ *  still be on screen, but the host is done with it and the next open is
+ *  allowed. `writing` stays set across the spend await so the lock is not
+ *  dropped before credits actually move. */
 function isPackSessionBusy(session) {
-  return !!(session && !session.committed);
+  return !!(session && (!session.committed || session.writing));
+}
+
+/** Host-wide busy flag: an explicit lock (held from the start of openPacks,
+ *  including the confirm modal) OR an in-flight session. */
+function isPackOpenBusy(session, lockHeld) {
+  return !!lockHeld || isPackSessionBusy(session);
+}
+
+function canStartPackOpen(session, lockHeld) {
+  return !isPackOpenBusy(session, lockHeld);
+}
+
+/** Split a burst into packs we actually paid for vs packs to put back.
+ *  `spent` is what spendCredits returned; unpaid packs must not be recorded. */
+function splitPaidPacks(packs, spent) {
+  const list = Array.isArray(packs) ? packs : [];
+  const n = Math.max(0, Math.min(list.length, Math.floor(Number(spent) || 0)));
+  return { paid: list.slice(0, n), unpaid: list.slice(n) };
+}
+
+/** Cards to persist after a spend attempt. Sandbox records the whole burst;
+ *  Competitive records only as many complete packs as credits actually moved. */
+function settlePackSpend(packs, spent, competitive) {
+  const list = Array.isArray(packs) ? packs : [];
+  if (!competitive) return { paid: list.slice(), unpaid: [] };
+  return splitPaidPacks(list, spent);
+}
+
+/** How many cards a refill should aim for. A bulk fetch passes remaining
+ *  cards needed so we don't top up to the 1-pack BUFFER_TARGET mid-burst. */
+function refillTarget(remaining, bufferTarget) {
+  const need = Math.max(0, Math.floor(Number(remaining) || 0));
+  const steady = Math.max(0, Math.floor(Number(bufferTarget) || 0));
+  return Math.max(steady, need);
+}
+
+/** If a refill is already running, a larger bulk goal must win — never keep
+ *  the smaller in-flight target and ignore the burst. */
+function coalesceRefillGoal(inFlightGoal, requested, bufferTarget) {
+  return Math.max(
+    refillTarget(inFlightGoal, bufferTarget),
+    refillTarget(requested, bufferTarget)
+  );
 }
 
 module.exports = {
@@ -118,5 +163,11 @@ module.exports = {
   applyDraw,
   previewPacks,
   summarizePacks,
-  isPackSessionBusy
+  isPackSessionBusy,
+  isPackOpenBusy,
+  canStartPackOpen,
+  splitPaidPacks,
+  settlePackSpend,
+  refillTarget,
+  coalesceRefillGoal
 };

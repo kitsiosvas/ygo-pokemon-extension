@@ -11,7 +11,13 @@ const {
   applyDraw,
   previewPacks,
   summarizePacks,
-  isPackSessionBusy
+  isPackSessionBusy,
+  isPackOpenBusy,
+  canStartPackOpen,
+  splitPaidPacks,
+  settlePackSpend,
+  refillTarget,
+  coalesceRefillGoal
 } = require('./packs');
 
 describe('resolvePackCount', () => {
@@ -39,6 +45,66 @@ describe('isPackSessionBusy', () => {
     assert.equal(isPackSessionBusy(null), false);
     assert.equal(isPackSessionBusy({ committed: false }), true);
     assert.equal(isPackSessionBusy({ committed: true }), false);
+  });
+
+  it('stays busy while a committed session is still writing (spend + record)', () => {
+    assert.equal(isPackSessionBusy({ committed: true, writing: true }), true);
+    assert.equal(isPackSessionBusy({ committed: true, writing: false }), false);
+    assert.equal(isPackOpenBusy({ committed: true, writing: true }, false), true);
+    assert.equal(isPackOpenBusy(null, false), false);
+  });
+});
+
+describe('canStartPackOpen', () => {
+  it('is a no-op while confirm, fetch, or spend is in flight', () => {
+    assert.equal(canStartPackOpen(null, false), true);
+    assert.equal(canStartPackOpen(null, true), false); // confirm / lock held
+    assert.equal(canStartPackOpen({ committed: false }, false), false); // fetch
+    assert.equal(canStartPackOpen({ committed: false }, true), false);
+    assert.equal(canStartPackOpen({ committed: true, writing: true }, false), false); // spend
+    assert.equal(canStartPackOpen({ committed: true, writing: true }, true), false);
+    // `{ confirmed: true }` on openPacks must not skip this lock
+    assert.equal(canStartPackOpen(null, true), false);
+  });
+
+  it('allows the next open after spend/record, even if play-mode cards are still flipping', () => {
+    assert.equal(canStartPackOpen({ committed: true, writing: false }, false), true);
+    assert.equal(canStartPackOpen(null, false), true);
+  });
+});
+
+describe('settlePackSpend', () => {
+  const packs = [[{ id: 1 }], [{ id: 2 }], [{ id: 3 }]];
+
+  it('does not record unpaid packs when spend returns 0 or less than pack count', () => {
+    assert.deepEqual(splitPaidPacks(packs, 0), { paid: [], unpaid: packs });
+    const none = settlePackSpend(packs, 0, true);
+    assert.deepEqual(none.paid, []);
+    assert.equal(none.unpaid.length, 3);
+    const partial = settlePackSpend(packs, 2, true);
+    assert.equal(partial.paid.length, 2);
+    assert.equal(partial.unpaid.length, 1);
+    assert.deepEqual(partial.unpaid[0][0], { id: 3 });
+  });
+
+  it('records the whole burst on sandbox (no spend) and when spend covers every pack', () => {
+    const free = settlePackSpend(packs, 0, false);
+    assert.equal(free.paid.length, 3);
+    assert.deepEqual(free.unpaid, []);
+    const paid = settlePackSpend(packs, 3, true);
+    assert.equal(paid.paid.length, 3);
+    assert.deepEqual(paid.unpaid, []);
+  });
+});
+
+describe('refillTarget', () => {
+  it('uses remaining cards needed for a bulk fetch, not a silent 18-card top-up', () => {
+    assert.equal(refillTarget(100, 18), 100);
+    assert.equal(refillTarget(5, 18), 18);
+    assert.equal(refillTarget(0, 18), 18);
+    assert.equal(coalesceRefillGoal(18, 100, 18), 100);
+    assert.equal(coalesceRefillGoal(100, 18, 18), 100);
+    assert.equal(coalesceRefillGoal(0, 40, 18), 40);
   });
 });
 
@@ -87,7 +153,7 @@ describe('Field / Binder pack UI hooks', () => {
     assert.match(html, /type === 'packSession'/);
     assert.match(html, /compAllBtn/);
     assert.match(html, /packResults/);
-    assert.match(html, /count: 'all'/);
+    assert.match(html, /requestOpenPacks\('competitive', 'all'\)/);
     assert.match(html, /Open ' \+ burst/);
     assert.match(html, /MAX_BULK_PACKS/);
     assert.match(html, /id="bulkModal"/);
@@ -99,12 +165,18 @@ describe('Field / Binder pack UI hooks', () => {
     assert.match(html, /#bulkModal \{[^}]*position: fixed/);
     assert.match(html, /#bulkModalCard \{[^}]*user-select: text/);
     assert.match(html, /\.mname, \.mtype, \.mdesc, \.mmeta, \.mprice, \.mstats/);
+    assert.match(html, /openingRequested/);
+    assert.match(html, /type === 'packLock'/);
+    assert.match(html, /requestOpenPacks/);
+    assert.match(html, /phase === 'idle'/);
   });
 
   it('Binder can open one competitive pack or a bulk burst', () => {
     assert.match(binder, /packAllBtn/);
     assert.match(binder, /count: 'all'/);
     assert.match(binder, /Open ' \+ burst/);
+    assert.match(binder, /openingRequested/);
+    assert.match(binder, /type === 'packLock'/);
   });
 
   it('Actions tree and command palette say bulk, not all', () => {
@@ -119,6 +191,20 @@ describe('Field / Binder pack UI hooks', () => {
     const cfg = JSON.parse(manifest).contributes.configuration.properties['ygoDuel.packReveal'];
     assert.equal(cfg.default, 'tap');
     assert.deepEqual(cfg.enum, ['auto', 'tap']);
+  });
+
+  it('host lock is taken before confirm; Field session is replayed on ready', () => {
+    const openFn = host.slice(host.indexOf('async function openPacks'));
+    const acquireAt = openFn.indexOf('tryAcquirePackLock');
+    const confirmAt = openFn.indexOf('bulkConfirmMessage');
+    assert.ok(acquireAt >= 0 && confirmAt > acquireAt, 'lock must be acquired before the confirm modal');
+    assert.match(host, /replayPackSession/);
+    assert.match(host, /fieldReady = true/);
+    assert.match(host, /session\.writing = true/);
+    assert.match(host, /settlePackSpend/);
+    assert.match(host, /ensureRefill\(remaining\)/);
+    assert.match(host, /ensureRefill\(want - out\.length\)/);
+    assert.doesNotMatch(host, /remaining\), 40/);
   });
 });
 

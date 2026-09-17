@@ -9,7 +9,10 @@ const {
   applyDraw,
   previewPacks,
   resolvePackCount,
-  isPackSessionBusy
+  canStartPackOpen,
+  settlePackSpend,
+  refillTarget,
+  coalesceRefillGoal
 } = require('./packs');
 
 // Available game definitions (data adapter + theme). Add a game by dropping a
@@ -84,7 +87,10 @@ function setActiveGame(id) {
 
   BUFFER.length = 0;   // drop the previous game's cards
   loadBufferCache();   // warm-start this game's buffer from its own cache
-  if (panel) panel.webview.html = renderHtml(panel.webview, 'duel.html');
+  if (panel) {
+    fieldReady = false;
+    panel.webview.html = renderHtml(panel.webview, 'duel.html');
+  }
   if (binderPanel) binderPanel.webview.html = renderHtml(binderPanel.webview, 'binder.html');
   ensureRefill();
   sendCollection(binderTrack);
@@ -249,6 +255,7 @@ function ensurePanel(context) {
     panel.reveal(vscode.ViewColumn.Beside, true);
     return;
   }
+  fieldReady = false;
   panel = vscode.window.createWebviewPanel(
     'ygoDuel',
     game.theme.fieldTitle,
@@ -266,9 +273,16 @@ function ensurePanel(context) {
     else if (msg.type === 'openBinder') openBinder(context);
     else if (msg.type === 'setGame') setActiveGame(msg.id);
     else if (msg.type === 'shown') lastCardByGame[msg.gameId] = msg.card;
-    else if (msg.type === 'ready') { sendPrefetch(); sendRestore(); sendCredits(); }
+    else if (msg.type === 'ready') {
+      fieldReady = true;
+      sendPrefetch();
+      sendRestore();
+      sendCredits();
+      postPackLock(packLock);
+      replayPackSession();
+    }
   });
-  panel.onDidDispose(() => { panel = null; discardPackSession(); });
+  panel.onDidDispose(() => { panel = null; fieldReady = false; discardPackSession(); });
 }
 
 /** Read a webview HTML file and fill in the templated placeholders: the CSP
@@ -424,17 +438,81 @@ function sendPrefetch(extraUrls = []) {
  *  Bulk mode (2+ packs) commits as soon as the fetch lands, because there is
  *  no wrapper to rip. Abandoned (game switch / panel close / reload) before
  *  commit costs nothing. One session at a time; packEpoch invalidates an
- *  in-flight fetch so a cancelled open can't commit against the next game. */
+ *  in-flight fetch so a cancelled open can't commit against the next game.
+ *
+ *  packLock is taken at the start of openPacks (before the confirm await) and
+ *  held through spend+record so a second Field/Binder/palette open cannot
+ *  race a stale credit balance. packGate invalidates a lock holder that was
+ *  discarded mid-confirm. fieldReady gates packSession posts — the Field
+ *  replays the in-flight session when it becomes ready. */
 let packSession = null;
 let packEpoch = 0;
+let packLock = false;
+let packGate = 0;
+let fieldReady = false;
+let lastPackPayload = null;
 let ripBeforeReady = false; // play-mode: ripped the wrapper before the fetch finished
 
 function autoRevealEnabled() {
   return vscode.workspace.getConfiguration('ygoDuel').get('packReveal') !== 'tap';
 }
 
+function postPackLock(busy) {
+  const msg = { type: 'packLock', busy: !!busy };
+  if (panel && fieldReady) panel.webview.postMessage(msg);
+  if (binderPanel) binderPanel.webview.postMessage(msg);
+}
+
+function tryAcquirePackLock() {
+  if (!canStartPackOpen(packSession, packLock)) return 0;
+  packLock = true;
+  const gate = ++packGate;
+  postPackLock(true);
+  return gate;
+}
+
+function releasePackLock(gate) {
+  if (gate && gate !== packGate) return;
+  packLock = false;
+  postPackLock(false);
+}
+
 function postPackSession(payload) {
-  if (panel) panel.webview.postMessage({ type: 'packSession', ...payload });
+  lastPackPayload = payload;
+  if (panel && fieldReady) panel.webview.postMessage({ type: 'packSession', ...payload });
+}
+
+/** Replay opening / ready / failed once the Field is listening, so a palette
+ *  or Binder open while the panel is closed (or still loading) cannot drop
+ *  the session on the floor. */
+function replayPackSession() {
+  if (!panel || !fieldReady) return;
+  if (packSession) {
+    const autoReveal = packSession.mode === 'play' && autoRevealEnabled();
+    const packCount = packSession.packCount || (packSession.packs ? packSession.packs.length : 1);
+    panel.webview.postMessage({
+      type: 'packSession',
+      phase: 'opening',
+      mode: packSession.mode,
+      competitive: packSession.competitive,
+      packCount,
+      autoReveal
+    });
+    if (packSession.packs) {
+      panel.webview.postMessage({
+        type: 'packSession',
+        phase: 'ready',
+        mode: packSession.mode,
+        competitive: packSession.competitive,
+        packs: packSession.packs,
+        autoReveal: packSession.mode === 'play' ? autoReveal : false
+      });
+    }
+    return;
+  }
+  if (lastPackPayload) {
+    panel.webview.postMessage({ type: 'packSession', ...lastPackPayload });
+  }
 }
 
 function noCreditsMessage() {
@@ -450,25 +528,10 @@ function bulkConfirmMessage(n, available, competitive) {
   return `Open${of} Competitive packs? ${cards} cards will be added to your Competitive collection and ${n} credit${n === 1 ? '' : 's'} will be spent.`;
 }
 
-/** Command-palette / bulk competitive entry: confirm, then open up to the cap. */
+/** Command-palette / bulk competitive entry. Confirm + lock live in
+ *  openPacks — passing `{ confirmed: true }` must not skip the lock. */
 async function confirmAndOpenPacks(track, count, context) {
-  const competitive = track === 'competitive';
-  const credits = competitive ? github.getCredits(extCtx) : 0;
-  const n = resolvePackCount(count, credits, competitive);
-  if (n <= 0) {
-    if (competitive) noCreditsMessage();
-    return;
-  }
-  if (n > 1 && competitive) {
-    const choice = await vscode.window.showWarningMessage(
-      bulkConfirmMessage(n, credits, true),
-      { modal: true },
-      'Open'
-    );
-    if (choice !== 'Open') return;
-  }
-  ensurePanel(context);
-  await openPacks(track, n, { confirmed: true });
+  await openPacks(track, count, { context });
 }
 
 /** Prompt for track + count, then open that many packs (bulk grid if > 1). */
@@ -505,14 +568,24 @@ async function promptAndOpenMultiplePacks(context) {
 
 /** Open `count` packs on `track`. count may be a number or 'all' (Competitive
  *  only). 1 pack → play mode (wrapper + auto/tap reveal, commit on rip).
- *  2+ packs → bulk mode (results grid, commit as soon as the fetch lands). */
+ *  2+ packs → bulk mode (results grid, commit as soon as the fetch lands).
+ *  The host lock is taken before any confirm await so Field, Binder, and the
+ *  palette cannot overlap one economy. `{ confirmed: true }` skips the modal
+ *  but never the lock. */
 async function openPacks(track = 'sandbox', count = 1, opts = {}) {
+  const gate = tryAcquirePackLock();
+  if (!gate) {
+    vscode.window.showInformationMessage('A pack is already opening — finish it first.');
+    return;
+  }
+
   track = track === 'competitive' ? 'competitive' : 'sandbox';
   const competitive = track === 'competitive';
   const credits = competitive ? github.getCredits(extCtx) : 0;
   const n = resolvePackCount(count, credits, competitive);
   if (n <= 0) {
     if (competitive) noCreditsMessage();
+    releasePackLock(gate);
     return;
   }
 
@@ -522,18 +595,27 @@ async function openPacks(track = 'sandbox', count = 1, opts = {}) {
       { modal: true },
       'Open'
     );
-    if (choice !== 'Open') return;
+    if (gate !== packGate) return; // discarded during confirm
+    if (choice !== 'Open') {
+      releasePackLock(gate);
+      postPackSession({ phase: 'idle' });
+      return;
+    }
   }
-  if (isPackSessionBusy(packSession)) {
-    vscode.window.showInformationMessage('A pack is already opening — finish it first.');
-    return;
-  }
+
+  if (gate !== packGate) return;
+
+  const ctx = opts.context || extCtx;
+  if (ctx) ensurePanel(ctx);
 
   const mode = n > 1 ? 'bulk' : 'play';
   const autoReveal = mode === 'play' && autoRevealEnabled();
   const epoch = ++packEpoch;
   ripBeforeReady = false;
-  packSession = { epoch, track, competitive, mode, packs: null, committed: false };
+  packSession = {
+    epoch, gate, track, competitive, mode,
+    packCount: n, packs: null, committed: false, writing: false
+  };
 
   postPackSession({ phase: 'opening', mode, competitive, packCount: n, autoReveal });
 
@@ -545,15 +627,16 @@ async function openPacks(track = 'sandbox', count = 1, opts = {}) {
       if (mode === 'bulk') postPackSession({ phase: 'progress', fetched, total });
     });
   } catch {
-    if (epoch !== packEpoch) return;
+    if (epoch !== packEpoch || gate !== packGate) return;
     packSession = null;
     ripBeforeReady = false;
+    releasePackLock(gate);
     postPackSession({ phase: 'failed' });
     if (panel) panel.webview.postMessage({ type: 'fetchFailed' });
     vscode.window.showWarningMessage("⚠️ Couldn't fetch cards right now — check your connection and try again.");
     return;
   }
-  if (epoch !== packEpoch) return; // abandoned mid-fetch (game switch / panel close)
+  if (epoch !== packEpoch || gate !== packGate) return; // abandoned mid-fetch (game switch / panel close)
 
   const { packs, leftover } = previewPacksForTrack(raw, track);
   if (leftover.length) {
@@ -563,6 +646,8 @@ async function openPacks(track = 'sandbox', count = 1, opts = {}) {
   if (!packs.length) {
     packSession = null;
     ripBeforeReady = false;
+    releasePackLock(gate);
+    postPackSession({ phase: 'failed' });
     if (panel) panel.webview.postMessage({ type: 'fetchFailed' });
     vscode.window.showWarningMessage("⚠️ Couldn't fetch cards right now — check your connection and try again.");
     return;
@@ -574,18 +659,24 @@ async function openPacks(track = 'sandbox', count = 1, opts = {}) {
   }
 
   packSession.packs = packs;
+  packSession.packCount = packs.length;
   sendPrefetch(packs.flat().map(c => c.image));
   ensureRefill();
 
   if (mode === 'bulk') {
-    await commitPackSession();
-    postPackSession({ phase: 'ready', mode, competitive, packs, autoReveal: false });
-    packSession = null;
+    const paid = await commitPackSession();
+    if (gate !== packGate) return;
+    if (!paid || !paid.length) {
+      postPackSession({ phase: 'failed' });
+      if (panel) panel.webview.postMessage({ type: 'fetchFailed' });
+      return;
+    }
+    postPackSession({ phase: 'ready', mode, competitive, packs: paid, autoReveal: false });
     return;
   }
 
   postPackSession({ phase: 'ready', mode, competitive, packs, autoReveal });
-  if (ripBeforeReady) { ripBeforeReady = false; commitPackSession(); }
+  if (ripBeforeReady) { ripBeforeReady = false; await commitPackSession(); }
 }
 
 /** Player ripped the wrapper. Commit now if the pack is ready; otherwise
@@ -599,29 +690,73 @@ function onPackRipped() {
 /** Open the pending session for real. Play mode: called when the wrapper is
  *  ripped. Bulk mode: called as soon as the fetch lands. This is the ONLY
  *  place Competitive credits are spent and the ONLY place a pack's cards are
- *  recorded, so an unopened pack never costs anything. */
+ *  recorded, so an unopened pack never costs anything.
+ *
+ *  The host lock stays busy until BOTH spendCredits and recordCards finish.
+ *  The session is cleared after those writes so play-mode flipping does not
+ *  block the next open. If spend returns fewer credits than packs, unpaid
+ *  packs go back on the buffer and are not recorded. */
 async function commitPackSession() {
-  if (!packSession || packSession.committed || !packSession.packs) return;
-  const { packs, track, competitive } = packSession;
-  packSession.committed = true;
-  packSession = null; // host is done; the Field may still be flipping cards
-  const cards = packs.flat();
+  if (!packSession || packSession.committed || !packSession.packs) return [];
+  const session = packSession;
+  const { packs, track, competitive, gate } = session;
+  session.committed = true;
+  session.writing = true;
+
+  const spent = competitive
+    ? await github.spendCredits(extCtx, packs.length)
+    : packs.length;
   if (competitive) {
-    await github.spendCredits(extCtx, packs.length);
     updateStatusBar();
     sendCredits();
   }
-  recordCards(cards, track);
-  if (binderPanel && binderTrack === track) sendCollection(track);
+
+  const { paid, unpaid } = settlePackSpend(packs, spent, competitive);
+  if (unpaid.length) {
+    BUFFER.push(...unpaid.flat());
+    persistBufferSoon();
+    vscode.window.showWarningMessage(
+      spent <= 0
+        ? 'Could not spend Competitive credits — packs were not recorded.'
+        : `Only ${spent} of ${packs.length} Competitive credits could be spent — unpaid packs were not recorded.`
+    );
+  }
+  if (paid.length) {
+    recordCards(paid.flat(), track);
+    if (binderPanel && binderTrack === track) sendCollection(track);
+  }
+
+  if (packSession === session) packSession = null;
+  session.writing = false;
+  releasePackLock(gate);
+  return paid;
 }
 
 /** Throw away an unopened session — switching games, closing the panel, or
  *  reloading. Costs nothing if not yet committed. Bumping packEpoch also
- *  invalidates an in-flight fetch so it cannot commit afterwards. */
+ *  invalidates an in-flight fetch so it cannot commit afterwards.
+ *  A session already in spend+record is left to finish (credits already
+ *  moving); uncommitted packs go back on the buffer. */
 function discardPackSession() {
+  if (packSession && packSession.writing) {
+    packEpoch++;
+    return;
+  }
+  if (packSession && packSession.packs && !packSession.committed) {
+    BUFFER.push(...packSession.packs.flat());
+    persistBufferSoon();
+  }
   packEpoch++;
+  packGate++;
   packSession = null;
   ripBeforeReady = false;
+  packLock = false;
+  lastPackPayload = null;
+  postPackLock(false);
+  if (panel && fieldReady) {
+    lastPackPayload = { phase: 'idle' };
+    panel.webview.postMessage({ type: 'packSession', phase: 'idle' });
+  }
 }
 
 /** Higher = revealed later. New cards get a bump so they land later in a pack,
@@ -888,6 +1023,7 @@ const BUFFER = [];
 const BUFFER_TARGET = 18;  // cards to keep ready (a few full packs of headroom)
 const REFILL_AT = 12;      // background top-up once we dip to this (still >= a full pack)
 let refilling = null;
+let refillGoal = BUFFER_TARGET;
 
 /** True if a card's art is served from a host this game's CSP allows — i.e. the
  *  card actually belongs to `g` (default: the active game). A card can only ever
@@ -975,33 +1111,47 @@ async function harvest(count) {
   sendPrefetch();  // newly harvested art can start warming right away
 }
 
-/** Background top-up; only one runs at a time. `target` lets a bulk open
- *  harvest a bigger burst than the steady-state BUFFER_TARGET so a 20-pack
- *  open isn't 20 sequential 18-card refills. */
+/** Background top-up; only one harvest loop runs at a time. `target` lets a
+ *  bulk open harvest the remaining cards needed instead of the 1-pack
+ *  BUFFER_TARGET. If a refill is already running at a smaller goal, the
+ *  bulk target raises the in-flight goal (and a follow-up refill covers
+ *  anything still short after the current loop exits). */
 function ensureRefill(target = BUFFER_TARGET) {
-  if (refilling) return refilling;
-  const goal = Math.max(BUFFER_TARGET, target);
+  const goal = refillTarget(target, BUFFER_TARGET);
+  refillGoal = coalesceRefillGoal(refillGoal, goal, BUFFER_TARGET);
+  if (refilling) {
+    const inflight = refilling;
+    return inflight.then(() => {
+      if (BUFFER.length < goal) return ensureRefill(goal);
+    });
+  }
   refilling = (async () => {
     let rounds = 0;
-    const maxRounds = Math.max(5, Math.ceil(goal / 8) + 4);
-    while (BUFFER.length < goal && rounds < maxRounds) {
+    while (BUFFER.length < refillGoal) {
       rounds++;
-      await harvest(Math.min(24, goal - BUFFER.length + 2));
+      const cap = Math.max(8, Math.ceil(refillGoal / 8) + 6);
+      if (rounds > cap) break;
+      await harvest(Math.min(24, Math.max(8, refillGoal - BUFFER.length + 2)));
     }
-  })().catch(() => {}).finally(() => { refilling = null; });
+  })().catch(() => {}).finally(() => {
+    refilling = null;
+    refillGoal = BUFFER_TARGET;
+  });
   return refilling;
 }
 
 /** Pull `n` cards from the buffer, harvesting ahead as needed. Returns
  *  however many we could get (possibly short on a network/API failure) —
- *  the caller turns complete packs into a session and puts leftovers back. */
+ *  the caller turns complete packs into a session and puts leftovers back.
+ *  During a bulk fetch the remaining-card count is the refill target, never
+ *  a silent default-18 top-up from the splice loop. */
 async function fetchCards(n, onProgress) {
   const want = Math.max(0, Math.floor(n));
   const out = [];
   while (out.length < want) {
+    const remaining = want - out.length;
     if (BUFFER.length === 0) {
-      const remaining = want - out.length;
-      await ensureRefill(Math.min(Math.max(BUFFER_TARGET, remaining), 40));
+      await ensureRefill(remaining);
       if (BUFFER.length === 0) break;
     }
     const card = BUFFER.splice(Math.floor(Math.random() * BUFFER.length), 1)[0];
@@ -1009,7 +1159,9 @@ async function fetchCards(n, onProgress) {
     if (onProgress && (out.length === want || out.length % PACK_SIZE === 0)) {
       onProgress(out.length, want);
     }
-    if (BUFFER.length <= REFILL_AT && out.length < want) ensureRefill();
+    if (BUFFER.length <= REFILL_AT && out.length < want) {
+      ensureRefill(want - out.length);
+    }
   }
   persistBufferSoon();
   return out;
