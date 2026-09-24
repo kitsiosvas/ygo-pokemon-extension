@@ -283,6 +283,7 @@
     user-select: text; -webkit-user-select: text;
   }
   #packResults.show { display: flex; }
+  #packResults.waiting { cursor: wait; }
   .results-head {
     display: flex; align-items: center; justify-content: space-between;
     gap: 12px; flex-wrap: wrap;
@@ -650,9 +651,22 @@
     });
   }
 
+  function drawBlockedByPack(packLabel) {
+    // Bulk wait has no wrapper to rip — a stray single-card draw must not
+    // paint over it. Play-mode reveals pass packLabel from revealNext().
+    if (packState && packState.mode === 'bulk') return true;
+    if (awaitingRip) return true;
+    if (!packLabel && (openingRequested || packState)) return true;
+    return false;
+  }
+
   async function draw(c, packLabel) {
+    if (drawBlockedByPack(packLabel)) return;
     animating = true;
     await preload(c.imageData || c.image);
+    // a bulk session can start during preload (the host took the pack lock
+    // while this image was still decoding) — don't paint over its overlay
+    if (drawBlockedByPack(packLabel)) { animating = false; return; }
     render(c);
     // tag with ACTIVE_GAME (baked in at render time) rather than trusting the
     // host's current game — this page is always for the game it was rendered
@@ -703,11 +717,11 @@
   // Show a card in its resting state — no rise/impact/particles. Used to bring
   // back the last-pulled card when you switch games (so the field isn't empty).
   async function restoreCard(c) {
-    if (animating || packState || awaitingRip || packDone) return;
+    if (animating || packState || awaitingRip || packDone || openingRequested) return;
     await preload(c.imageData || c.image);
     // a session can start during that preload (the host replays an in-flight
     // pack right after 'ready') — don't paint over its wrapper
-    if (animating || packState || awaitingRip || packDone) return;
+    if (animating || packState || awaitingRip || packDone || openingRequested) return;
     render(c);
     updateStats(c);
     hint.style.display = 'none';
@@ -772,8 +786,7 @@
     if (!packState || packState.mode !== 'bulk') return;
     const fetched = m.fetched || 0;
     const total = m.total || (packState.packCount * 5);
-    packInfo.textContent = 'Fetching cards…  ' + fetched + ' / ' + total;
-    packInfo.style.opacity = 1;
+    showBulkWaitOverlay('Fetching cards…  ' + fetched + ' / ' + total);
   }
 
   function onSessionReady(m) {
@@ -954,8 +967,28 @@
   function hidePackResults() {
     closeBulkModal();
     bulkShownCards = [];
-    packResults.classList.remove('show');
+    packResults.classList.remove('show', 'waiting');
     packResults.innerHTML = '';
+  }
+
+  function bulkOpeningTitle() {
+    const n = packState.packCount;
+    return (packState.competitive ? '🏆 ' : '📦 ') +
+      'Opening ' + n + ' pack' + (n > 1 ? 's' : '') + '…';
+  }
+
+  function showBulkWaitOverlay(sub) {
+    const title = bulkOpeningTitle();
+    packInfo.style.opacity = 1;
+    packInfo.textContent = sub || title;
+    packResults.innerHTML =
+      '<div class="results-head">' +
+        '<div>' +
+          '<div class="results-title">' + title + '</div>' +
+          '<div class="results-sub">' + (sub || 'Fetching cards…') + '</div>' +
+        '</div>' +
+      '</div>';
+    packResults.classList.add('show', 'waiting');
   }
 
   function showBulkOpening() {
@@ -964,10 +997,7 @@
     badge.textContent = ''; badge.className = '';
     hint.style.display = 'none';
     packEl.style.display = 'none';
-    packInfo.style.opacity = 1;
-    const n = packState.packCount;
-    packInfo.textContent = (packState.competitive ? '🏆 ' : '📦 ') +
-      'Opening ' + n + ' pack' + (n > 1 ? 's' : '') + '…';
+    showBulkWaitOverlay();
   }
 
   function showBulkResults(packs) {
@@ -976,6 +1006,7 @@
     const newCount = cards.filter(c => c.isNew).length;
     const value = pullValue(cards);
     packEl.style.display = 'none';
+    packResults.classList.remove('waiting');
     awaitingRip = false;
     animating = false;
     packDone = true;
@@ -1196,7 +1227,12 @@
     else if (m.type === 'prefetch') prefetch(m.urls || []);
     else if (m.type === 'restore') restoreCard(m.card);
     else if (m.type === 'credits') { credits = m.credits || 0; updateCompBtn(); }
-    else if (m.type === 'fetchFailed') handleFetchFailed();
+    else if (m.type === 'fetchFailed') {
+      // a stray single-card fetch must not tear down an in-flight bulk wait;
+      // a real pack-fetch failure arrives as packSession phase 'failed' first.
+      if (packState && packState.mode === 'bulk') return;
+      handleFetchFailed();
+    }
   });
 
   // let the extension know we're listening, so it can send the first prefetch batch
@@ -1242,9 +1278,9 @@
   });
 
   packResults.addEventListener('click', e => {
+    e.stopPropagation(); // wait overlay and results must never become a field draw
     const cell = e.target.closest('.r-card');
     if (!cell) return;
-    e.stopPropagation();
     // A drag that selected name/price text should copy, not open the popup.
     const sel = window.getSelection && String(window.getSelection());
     if (sel && e.target.closest('.r-name, .r-price')) return;
@@ -1282,10 +1318,12 @@
   // click the field to draw a real card (asks the extension to fetch one)
   field.addEventListener('click', () => {
     if (bulkModal.classList.contains('show')) return;
-    if (packResults.classList.contains('show')) return; // Done button dismisses bulk results
+    if (packResults.classList.contains('show')) return; // wait overlay + Done dismiss bulk results
     if (animating) return;            // ignore taps mid-animation
     if (awaitingRip) { ripPack(); return; }      // tear the pack open
-    if (packState && packState.mode !== 'bulk') {
+    if (openingRequested) return;     // confirm / lock held — don't start a single draw
+    if (packState && packState.mode === 'bulk') return; // wait for bulk; do not interrupt
+    if (packState) {
       revealNext();
       return;
     }

@@ -194,6 +194,7 @@ describe('Field / Binder pack UI hooks', () => {
     assert.match(binder, /Open ' \+ burst/);
     assert.match(binder, /openingRequested/);
     assert.match(binder, /type === 'packLock'/);
+    assert.match(binder, /drawBtn\.disabled = openingRequested/);
   });
 
   it('Actions tree and command palette say bulk, not all', () => {
@@ -247,6 +248,44 @@ describe('Field / Binder pack UI hooks', () => {
   it('Field cancels a stale settle timer and no longer speaks the legacy pack messages', () => {
     assert.match(html, /cancelPendingSettle\(\)/);
     assert.doesNotMatch(html, /'packOpening'|'packCards'/);
+  });
+
+  it('Field does not let a tap start a single-card draw while bulk is opening', () => {
+    const tap = html.slice(html.indexOf("field.addEventListener('click'"));
+    const bulkIgnore = tap.indexOf("packState.mode === 'bulk') return");
+    const openingIgnore = tap.indexOf('openingRequested) return');
+    const drawAt = tap.indexOf("type: 'requestDraw'");
+    assert.ok(bulkIgnore >= 0 && bulkIgnore < drawAt,
+      'a bulk wait must ignore the tap before requestDraw');
+    assert.ok(openingIgnore >= 0 && openingIgnore < drawAt,
+      'openingRequested must block a field draw');
+    assert.doesNotMatch(tap, /packState\.mode !== 'bulk'/);
+  });
+
+  it('bulk wait covers the Field and ignores stray single-card paints', () => {
+    const showBulk = html.slice(html.indexOf('function showBulkOpening'), html.indexOf('function showBulkResults'));
+    assert.match(showBulk, /showBulkWaitOverlay/);
+    assert.match(html, /packResults\.classList\.add\('show', 'waiting'\)/);
+    assert.match(html, /packResults\.classList\.remove\('show', 'waiting'\)/);
+    assert.match(html, /e\.stopPropagation\(\); \/\/ wait overlay/);
+    const drawFn = html.slice(html.indexOf('function drawBlockedByPack'), html.indexOf('function restoreCard'));
+    assert.match(drawFn, /packState\.mode === 'bulk'/);
+    const preloadAt = drawFn.indexOf('await preload');
+    const recheckAt = drawFn.indexOf('drawBlockedByPack(packLabel)', preloadAt);
+    assert.ok(preloadAt >= 0 && recheckAt > preloadAt,
+      're-check bulk after image preload so a late draw cannot cover the wait overlay');
+    assert.match(html, /if \(packState && packState\.mode === 'bulk'\) return;/);
+  });
+
+  it('host ignores requestDraw while a pack session or lock is held', () => {
+    const drawFn = host.slice(host.indexOf('async function doDraw'), host.indexOf('function sendCredits'));
+    const busyAt = drawFn.indexOf('isPackOpenBusy(packSession, packLock)');
+    const fetchAt = drawFn.indexOf('fetchRandomCard');
+    const recordAt = drawFn.indexOf('recordCollection');
+    assert.ok(busyAt >= 0 && busyAt < fetchAt, 'doDraw must no-op before fetching a card');
+    assert.ok(drawFn.indexOf('BUFFER.push(card)') > fetchAt && drawFn.indexOf('BUFFER.push(card)') < recordAt,
+      'a card fetched during a pack open goes back on the buffer, not the collection');
+    assert.match(host, /isPackOpenBusy,/);
   });
 });
 
