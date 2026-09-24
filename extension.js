@@ -10,6 +10,7 @@ const {
   previewPacks,
   resolvePackCount,
   canStartPackOpen,
+  isPackOpenBusy,
   settlePackSpend,
   coalesceRefillGoal,
   liveRefillGoal
@@ -316,12 +317,22 @@ function packImageUri(webview) {
 }
 
 async function doDraw() {
+  // A field tap (or Binder/palette Draw) must not steal the Field from an
+  // in-flight pack — especially a bulk wait, which has no wrapper to rip and
+  // would otherwise paint a single card over "Opening N packs…".
+  if (isPackOpenBusy(packSession, packLock)) return;
   let card;
   try {
     card = await fetchRandomCard();
   } catch {
+    if (isPackOpenBusy(packSession, packLock)) return;
     if (panel) panel.webview.postMessage({ type: 'fetchFailed' });
     vscode.window.showWarningMessage("⚠️ Couldn't fetch a card right now — check your connection and try again.");
+    return;
+  }
+  if (isPackOpenBusy(packSession, packLock)) {
+    BUFFER.push(card);
+    persistBufferSoon();
     return;
   }
   const rec = recordCollection(card);

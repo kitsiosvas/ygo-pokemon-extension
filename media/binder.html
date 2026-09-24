@@ -286,6 +286,7 @@
   function updateTrackUI() {
     trackToggle.querySelectorAll('.seg').forEach(b => b.classList.toggle('on', b.dataset.track === track));
     drawBtn.style.display = track === 'competitive' ? 'none' : '';
+    drawBtn.disabled = openingRequested;
     resetBtn.textContent = 'Reset ' + (track === 'competitive' ? 'Competitive' : 'Sandbox');
     if (track === 'competitive') {
       packBtn.textContent = '🏆 Open Competitive Pack' + (credits > 0 ? ' (' + credits + ')' : '');
@@ -415,8 +416,10 @@
 
   search.addEventListener('input', render);
   sortSelect.addEventListener('change', () => setSortMode(sortSelect.value));
-  drawBtn.addEventListener('click',
-    () => vscode.postMessage({ type: 'requestDraw' }));
+  drawBtn.addEventListener('click', () => {
+    if (openingRequested) return;
+    vscode.postMessage({ type: 'requestDraw' });
+  });
   packBtn.addEventListener('click', () => {
     if (openingRequested) return;
     if (track === 'competitive') {
