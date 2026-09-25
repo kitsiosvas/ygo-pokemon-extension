@@ -254,9 +254,18 @@ function activate(context) {
   ensureRefill();
 }
 
+/** Show a panel that is already open without moving it.
+ *  ViewColumn.Beside and Active re-place the panel, which collapses a
+ *  maximized editor group back into a split. Its own column leaves the
+ *  layout the user chose. An undefined column (panel not visible) lets
+ *  reveal() use the active column instead of opening a new split. */
+function revealInPlace(webviewPanel) {
+  webviewPanel.reveal(webviewPanel.viewColumn, true);
+}
+
 function ensurePanel(context) {
   if (panel) {
-    panel.reveal(vscode.ViewColumn.Beside, true);
+    revealInPlace(panel);
     return;
   }
   fieldReady = false;
@@ -1019,7 +1028,7 @@ function previewPacksForTrack(rawCards, track, gid = gameId) {
  *  opens back on the Sandbox track; the webview's toggle switches from there. */
 function openBinder(context) {
   if (binderPanel) {
-    binderPanel.reveal(vscode.ViewColumn.Active);
+    revealInPlace(binderPanel);
     sendCollection(binderTrack);
     return;
   }
