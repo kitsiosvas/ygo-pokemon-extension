@@ -245,6 +245,17 @@ describe('Field / Binder pack UI hooks', () => {
     assert.doesNotMatch(host, /confirmAndOpenPacks|opts\.confirmed/);
   });
 
+  it('revealing an open Field or Binder stays in its current column', () => {
+    const reveal = host.slice(host.indexOf('function revealInPlace'), host.indexOf('function ensurePanel'));
+    assert.match(reveal, /reveal\(webviewPanel\.viewColumn, true\)/);
+    const ensure = host.slice(host.indexOf('function ensurePanel'), host.indexOf('createWebviewPanel'));
+    assert.match(ensure, /revealInPlace\(panel\)/);
+    assert.doesNotMatch(ensure, /ViewColumn\.(Beside|Active)/);
+    const binderOpen = host.slice(host.indexOf('function openBinder'), host.indexOf('createWebviewPanel', host.indexOf('function openBinder')));
+    assert.match(binderOpen, /revealInPlace\(binderPanel\)/);
+    assert.doesNotMatch(binderOpen, /ViewColumn\.(Beside|Active)/);
+  });
+
   it('Field cancels a stale settle timer and no longer speaks the legacy pack messages', () => {
     assert.match(html, /cancelPendingSettle\(\)/);
     assert.doesNotMatch(html, /'packOpening'|'packCards'/);
